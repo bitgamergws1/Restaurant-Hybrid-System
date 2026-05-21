@@ -1,26 +1,37 @@
-import smtplib
 import traceback
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
+import requests
 from config import Config
 
 
 def _send_email(to_address: str, subject: str, html_body: str) -> bool:
     try:
-        msg = MIMEMultipart("alternative")
-        msg["Subject"] = subject
-        msg["From"] = f"{Config.RESTAURANT_NAME} <{Config.GMAIL_SENDER}>"
-        msg["To"] = to_address
+        payload = {
+            "sender": {
+                "name": Config.BREVO_SENDER_NAME,
+                "email": Config.BREVO_SENDER_EMAIL
+            },
+            "to": [{"email": to_address}],
+            "subject": subject,
+            "htmlContent": html_body
+        }
 
-        msg.attach(MIMEText(html_body, "html"))
+        response = requests.post(
+            Config.BREVO_API_URL,
+            headers={
+                "accept": "application/json",
+                "api-key": Config.BREVO_API_KEY,
+                "content-type": "application/json"
+            },
+            json=payload,
+            timeout=15
+        )
 
-        with smtplib.SMTP("smtp.gmail.com", 587) as server:
-            server.ehlo()
-            server.starttls()
-            server.login(Config.GMAIL_SENDER, Config.GMAIL_APP_PASSWORD)
-            server.sendmail(Config.GMAIL_SENDER, to_address, msg.as_string())
+        if response.status_code not in (200, 201):
+            print(f"[email_service] Brevo error {response.status_code}: {response.text}")
+            return False
 
         return True
+
     except Exception:
         traceback.print_exc()
         return False
@@ -188,7 +199,6 @@ def send_invoice_email(to_address: str, user_name: str, order: dict, items: list
 
     order_type_color = "#ff6b35" if order_type == "dine_in" else "#4facfe"
 
-    # table header
     items_rows = ""
     for item in items:
         item_name = str(item.get("item_name", ""))
