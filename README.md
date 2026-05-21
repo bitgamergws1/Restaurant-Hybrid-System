@@ -624,7 +624,7 @@ Health check endpoint: `GET /health`
 
 | Requirement | Status |
 |---|---|
-| GitHub Repository | Push `restaurant-hybrid-system/` to your repo |
+| GitHub Repository |  `https://github.com/bitgamergws1/Restaurant-Hybrid-System/` - repo |
 | Complete Source Code | All backend files in `backend/` |
 | Deployment Link | Render URL after deploy |
 | Demo Video | Record a Postman walkthrough of key routes |
