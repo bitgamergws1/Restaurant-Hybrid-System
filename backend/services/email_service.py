@@ -67,8 +67,7 @@ def _base_wrapper(content_html: str) -> str:
                                letter-spacing:2px;text-transform:uppercase;">Official Communication</p>
                   </td>
                   <td align="right">
-                    <div style="width:42px;height:42px;background:linear-gradient(135deg,#ff6b35,#f7931e);
-                                border-radius:10px;display:inline-block;"></div>
+                    <img src="https://jheoeumzzaqfqvkhifsq.supabase.co/storage/v1/object/public/logo/Gemini_Generated_Image_dvw3p9dvw3p9dvw3.png" width="42" height="42" style="border-radius:10px; display:inline-block;" alt="Spice Route Logo" />
                   </td>
                 </tr>
               </table>
