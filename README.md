@@ -1,8 +1,50 @@
-# Restaurant Hybrid Order Management System — Backend
+# Spice Route — Restaurant Order Management System
 
-A production-grade Python Flask backend for a hybrid restaurant ordering platform supporting
-Dine-In QR table ordering and Home Delivery. Deployed on Render, backed by Supabase PostgreSQL,
-and integrated with the DevNest AI proxy gateway.
+**DevNest Python Developer Internship — Week 2 Project**
+
+A production-grade hybrid restaurant ordering backend built with Python Flask,
+Supabase PostgreSQL, and the DevNest AI proxy gateway. Supports Dine-In QR
+table ordering and Home Delivery from a single unified API.
+
+---
+
+## Internship Brief Coverage
+
+| Requirement from Brief | Implementation |
+|---|---|
+| Display restaurant menu | `GET /api/v1/menu/` with category, search, availability filters |
+| Add / update / remove food items | Admin CRUD on `/api/v1/menu/` |
+| Food categories and pricing | `category`, `subcategory`, `price` fields with live filter |
+| Customer order placement | `POST /api/v1/orders/` — dine-in and delivery routing |
+| Quantity selection | Per-item `quantity` field validated on order creation |
+| Multiple item ordering | Accepts array of items in a single order payload |
+| Automatic bill generation | `billing_service.py` runs before any DB write |
+| GST / tax calculation | Strict 18% GST multiplier on subtotal |
+| Invoice formatting | HTML invoice email sent via Gmail SMTP |
+| Final amount calculation | subtotal + gst_amount = total_amount |
+| Store customer orders | `orders` + `order_items` tables in Supabase |
+| Maintain order history | `GET /api/v1/orders/user/<user_id>` |
+| Retrieve previous order records | `GET /api/v1/orders/<order_id>` |
+| Total orders tracking | Admin analytics endpoint |
+| Daily revenue calculation | Daily breakdown in analytics response |
+| Most sold items analysis | Pareto sort in analytics (top 20 by quantity) |
+| Sales summary generation | Full summary object in analytics response |
+| Flask API for orders / menu | All routes under `/api/v1/` |
+| GET / POST request handling | All standard HTTP methods implemented |
+| Deployment on Render | gunicorn start command — deploy-ready |
+| README documentation | This file |
+
+**Bonus features implemented beyond the brief:**
+- OTP-based auth (signup, login, forgot password, reset)
+- Dine-In QR mode with `table_id` routing
+- India Post pincode resolution for delivery
+- Mapbox coordinate storage
+- AI Waiter Recommendation (deepshi-r1)
+- AI Complaint Triage with strict JSON output (deepshi-r2)
+- Mock Razorpay payment verification
+- Session-based auth middleware with role enforcement
+- RLS security policies on all Supabase tables
+- Supabase cron jobs for OTP and session cleanup
 
 ---
 
@@ -10,388 +52,284 @@ and integrated with the DevNest AI proxy gateway.
 
 | Layer | Technology |
 |---|---|
-| Backend Runtime | Python 3.11+ / Flask 3.0 |
+| Language | Python 3.11+ |
+| Framework | Flask 3.0 |
 | Database | Supabase (PostgreSQL) |
 | Deployment | Render (gunicorn) |
-| Frontend | Flutter Web |
-| Email | Gmail SMTP via smtplib (TLS, Port 587) |
-| AI Gateway | DevNest Proxy (deepshi-r1, deepshi-r2) |
-| Postal Lookup | India Post public API |
+| Frontend | Flutter Web (separate repo) |
+| Email | Gmail SMTP — smtplib, TLS Port 587 |
+| AI Gateway | DevNest Proxy — deepshi-r1, deepshi-r2 |
+| Pincode API | India Post public API |
 
 ---
 
-## Folder Structure
+## Project Structure
 
 ```
 restaurant-hybrid-system/
 └── backend/
-    ├── app.py                      Flask app factory — blueprint registration and CORS
-    ├── config.py                   Central env var loader — no hardcoded secrets
+    ├── app.py                      Flask app factory
+    ├── config.py                   Environment variable loader
     ├── extensions.py               Supabase client singleton
-    ├── requirements.txt            Production dependencies
-    ├── supabase_schema.sql         PostgreSQL schema — paste into Supabase SQL Editor
+    ├── requirements.txt
+    ├── supabase_schema.sql         Full schema — paste into Supabase SQL Editor
     ├── routes/
-    │   ├── auth.py                 Signup, login, OTP verify, forgot/reset password
+    │   ├── auth.py                 Signup, OTP verify, login, logout, forgot/reset password
     │   ├── menu.py                 Public menu read + admin CRUD
     │   ├── orders.py               Hybrid order creation (dine-in and delivery)
-    │   ├── payments.py             Mock Razorpay verify + invoice email trigger
+    │   ├── payments.py             Mock Razorpay verify + invoice email
     │   ├── ai.py                   AI recommendation + complaint triage
     │   ├── admin.py                Analytics, complaints management, user list
-    │   └── postal.py               Pincode resolution endpoint
+    │   └── postal.py               Pincode resolution
     ├── services/
-    │   ├── otp_service.py          Supabase-backed OTP CRUD operations
-    │   ├── email_service.py        Gmail SMTP — OTP and invoice HTML emails
-    │   ├── ai_service.py           DevNest proxy bridge — model routing
+    │   ├── otp_service.py          Supabase-backed OTP operations
+    │   ├── email_service.py        Gmail SMTP — OTP emails and HTML invoice
+    │   ├── ai_service.py           DevNest proxy bridge (deepshi-r1 / deepshi-r2)
     │   ├── postal_service.py       India Post API parser + Mapbox coordinate builder
     │   └── billing_service.py      GST calculation engine
     ├── middleware/
-    │   └── auth_middleware.py      Session token validator — require_auth / require_admin
+    │   └── auth_middleware.py      require_auth / require_admin decorators
     └── utils/
         ├── response.py             Standardised JSON response helpers
-        └── validators.py           Email, phone, pincode, UUID, field validators
+        └── validators.py           Email, phone, pincode, UUID validators
 ```
 
 ---
 
 ## Environment Variables
 
-Set these directly in Render's Environment tab. No `.env` file is used in production.
+Set these in Render → Environment tab. No `.env` file used in production.
 
 | Variable | Description |
 |---|---|
-| `SUPABASE_URL` | Your Supabase project URL |
-| `SUPABASE_SERVICE_KEY` | Supabase service role key (not the anon key) |
-| `GMAIL_SENDER` | Gmail address used to send emails |
-| `GMAIL_APP_PASSWORD` | 16-character Gmail App Password (not your login password) |
+| `SUPABASE_URL` | Supabase project URL |
+| `SUPABASE_SERVICE_KEY` | Service role key (not the anon key) |
+| `GMAIL_SENDER` | Gmail address for outgoing emails |
+| `GMAIL_APP_PASSWORD` | 16-character Gmail App Password |
 | `DEVNEST_TOKEN` | `DEVNEST_EVAL_2026` |
-| `FRONTEND_ORIGIN` | Your Flutter Web deployment URL (e.g. `https://yourapp.web.app`) |
-| `RESTAURANT_NAME` | Display name used in emails and responses |
-| `RESTAURANT_SUPPORT_EMAIL` | Support email shown in invoice footer |
-| `TRACKING_BASE_URL` | Base URL for order tracking links in invoice emails |
+| `FRONTEND_ORIGIN` | Flutter Web deployment URL |
+| `RESTAURANT_NAME` | Display name used in emails (default: Spice Route) |
+| `RESTAURANT_SUPPORT_EMAIL` | Support address shown in invoice footer |
+| `TRACKING_BASE_URL` | Base URL for order tracking links in invoice |
 
 ---
 
 ## Supabase Setup
 
-### Step 1 — Run the schema
+### Step 1 — Schema
 
-Open your Supabase project, go to **SQL Editor**, paste the entire contents of
-`supabase_schema.sql` and run it. This creates all tables, indices, and triggers.
+Open **SQL Editor** in your Supabase project and paste the full contents of
+`supabase_schema.sql`. Run it. Creates all tables, indices, triggers, RLS
+policies, and cron jobs in one shot.
 
-### Step 2 — Configure the Cron Job
+### Step 2 — Cron Jobs
 
-In Supabase go to **Database → Cron Jobs** and create a new job:
+The schema automatically registers two cron jobs via `pg_cron`:
 
-- Schedule: `*/2 * * * *`
-- SQL to run:
-
-```sql
-DELETE FROM user_otps WHERE expires_at < NOW();
-DELETE FROM sessions WHERE expires_at < NOW();
-```
-
-This purges expired OTP records and sessions every 2 minutes.
----
-
-## Row Level Security
-
-Every table has RLS enabled. The policies follow this model:
-
-| Table | anon key | service_role key |
+| Job | Schedule | SQL |
 |---|---|---|
-| `users` | Blocked (all operations) | Full access |
-| `user_otps` | Blocked (all operations) | Full access |
-| `sessions` | Blocked (all operations) | Full access |
-| `menu_items` | SELECT only — available items | Full access |
-| `orders` | Blocked (all operations) | Full access |
-| `order_items` | Blocked (all operations) | Full access |
-| `complaints` | Blocked (all operations) | Full access |
-| `payments` | Blocked (all operations) | Full access |
+| `purge_expired_otps` | Every 2 min | `DELETE FROM user_otps WHERE expires_at < NOW()` |
+| `purge_expired_sessions` | Every 2 min | `DELETE FROM sessions WHERE expires_at < NOW()` |
 
-**Why this is safe:**
-The Flask backend uses `SUPABASE_SERVICE_KEY` (service_role), which bypasses
-RLS at the database level. All authentication and authorisation logic is enforced
-inside the Flask middleware layer.
-
-The RLS policies protect against three threat vectors:
-1. Someone using the Supabase anon key directly from a browser or Postman
-2. The Supabase auto-generated REST API being hit without going through Flask
-3. Misconfigured client code accidentally using the wrong key
-
-`menu_items` is the only table with a partial public SELECT because the menu
-must remain readable without a session token (browse before login UX). The
-policy restricts this to `is_available = true` rows only — unpublished items
-are never exposed.
+To verify they registered, run in SQL Editor:
+```sql
+SELECT jobname, schedule, active FROM cron.job
+WHERE jobname IN ('purge_expired_otps', 'purge_expired_sessions');
+```
 
 ---
 
 ## Database Schema
 
 ### `users`
-Stores registered user accounts.
-
 | Column | Type | Notes |
 |---|---|---|
-| id | UUID | Primary key |
-| name | VARCHAR(255) | Full name |
+| id | UUID | PK |
+| name | VARCHAR(255) | |
 | email | VARCHAR(255) | Unique, indexed |
 | phone | VARCHAR(20) | Optional |
-| password_hash | TEXT | Werkzeug PBKDF2 hash |
+| password_hash | TEXT | Werkzeug PBKDF2 |
 | role | VARCHAR(20) | `customer`, `admin`, `staff` |
-| is_verified | BOOLEAN | Set true after OTP confirmation |
-| created_at | TIMESTAMPTZ | Auto |
-| updated_at | TIMESTAMPTZ | Auto via trigger |
+| is_verified | BOOLEAN | Set true after OTP confirm |
 
 ### `user_otps`
-Supabase-persisted OTP registry. Cron-cleaned every 2 minutes.
+Supabase-persisted OTP store. Cron-cleaned every 2 minutes.
 
 | Column | Type | Notes |
 |---|---|---|
-| id | UUID | Primary key |
 | email | VARCHAR(255) | Indexed with purpose |
 | otp_code | VARCHAR(6) | 6-digit numeric |
 | purpose | VARCHAR(20) | `signup` or `reset` |
-| metadata | JSONB | Stores signup payload (name, password_hash, phone) |
-| expires_at | TIMESTAMPTZ | OTP expiry (5 minutes from creation) |
-| is_verified | BOOLEAN | Marked true on successful verify to block reuse |
+| metadata | JSONB | Holds signup payload until OTP verified |
+| expires_at | TIMESTAMPTZ | 5 minutes from creation |
+| is_verified | BOOLEAN | Marked true after use — blocks replay |
 
 ### `sessions`
-Token-based session store.
-
 | Column | Type | Notes |
 |---|---|---|
-| id | UUID | Primary key |
 | user_id | UUID | FK → users |
-| token | TEXT | 64-char hex, unique, sent as `X-Session-Token` header |
+| token | TEXT | 64-char hex, sent as `X-Session-Token` |
 | expires_at | TIMESTAMPTZ | 24 hours from creation |
 
 ### `menu_items`
-Full product catalog.
-
 | Column | Type | Notes |
 |---|---|---|
-| id | UUID | Primary key |
-| name | VARCHAR(255) | FTS indexed |
-| description | TEXT | |
+| name | VARCHAR(255) | GIN FTS indexed |
 | price | NUMERIC(10,2) | Non-negative |
 | category | VARCHAR(100) | Indexed |
-| subcategory | VARCHAR(100) | |
-| is_available | BOOLEAN | Indexed — used for live menu filters |
-| image_url | TEXT | |
-| tags | TEXT[] | |
+| is_available | BOOLEAN | Indexed — used in live filters |
 | sort_order | INTEGER | Controls display order |
+| tags | TEXT[] | |
 
 ### `orders`
-Hybrid order records.
-
 | Column | Type | Notes |
 |---|---|---|
-| id | UUID | Primary key |
-| user_id | UUID | FK → users |
 | order_type | VARCHAR(20) | `dine_in` or `delivery` |
-| table_id | VARCHAR(50) | Set for dine-in orders only |
-| delivery_address | JSONB | Full address object for delivery |
+| table_id | VARCHAR(50) | Dine-in only |
+| delivery_address | JSONB | Delivery only |
 | delivery_coordinates | JSONB | `{lat, lng}` from Mapbox |
-| status | VARCHAR(30) | Enum with enforced transitions |
-| subtotal | NUMERIC(10,2) | Pre-GST total |
+| status | VARCHAR(30) | Transition-enforced enum |
+| subtotal | NUMERIC(10,2) | |
 | gst_amount | NUMERIC(10,2) | 18% of subtotal |
 | total_amount | NUMERIC(10,2) | Final billed amount |
 | payment_status | VARCHAR(20) | `pending`, `paid`, `failed`, `refunded` |
-| payment_id | TEXT | Razorpay payment ID after verification |
-| special_instructions | TEXT | |
-| invoice_sent | BOOLEAN | Tracks invoice email dispatch |
+| invoice_sent | BOOLEAN | |
 
 ### `order_items`
-Line items for each order.
-
 | Column | Type | Notes |
 |---|---|---|
-| id | UUID | Primary key |
-| order_id | UUID | FK → orders (cascade delete) |
-| menu_item_id | UUID | FK → menu_items (restrict delete) |
 | item_name | VARCHAR(255) | Snapshotted at order time |
-| quantity | INTEGER | Minimum 1 |
-| unit_price | NUMERIC(10,2) | Snapshotted at order time |
+| quantity | INTEGER | Min 1 |
+| unit_price | NUMERIC(10,2) | Snapshotted — frontend price ignored |
 | item_total | NUMERIC(10,2) | unit_price × quantity |
 
 ### `complaints`
-AI-triaged customer feedback.
-
 | Column | Type | Notes |
 |---|---|---|
-| id | UUID | Primary key |
-| user_id | UUID | FK → users |
-| order_id | UUID | FK → orders |
-| raw_text | TEXT | Original complaint input |
+| raw_text | TEXT | Original complaint |
 | category | VARCHAR(100) | AI classified |
 | sentiment | VARCHAR(50) | AI classified |
 | priority | VARCHAR(20) | `low`, `medium`, `high`, `critical` |
-| status | VARCHAR(30) | `open`, `in_review`, `resolved`, `closed` |
+| status | VARCHAR(30) | `open` → `in_review` → `resolved` / `closed` |
 
 ### `payments`
-Payment transaction audit trail.
-
 | Column | Type | Notes |
 |---|---|---|
-| id | UUID | Primary key |
-| order_id | UUID | FK → orders |
 | razorpay_payment_id | TEXT | Indexed |
-| razorpay_order_id | TEXT | |
 | amount | NUMERIC(10,2) | |
 | status | VARCHAR(20) | `pending`, `success`, `failed` |
-| gateway_response | JSONB | Full payload from Razorpay |
-| verified_at | TIMESTAMPTZ | Set on successful verification |
+| gateway_response | JSONB | Full Razorpay payload |
+| verified_at | TIMESTAMPTZ | |
+
+---
+
+## Row Level Security
+
+RLS is enabled on all 8 tables.
+
+| Table | anon key | service_role key |
+|---|---|---|
+| `users` | Blocked | Full access |
+| `user_otps` | Blocked | Full access |
+| `sessions` | Blocked | Full access |
+| `menu_items` | SELECT — available items only | Full access |
+| `orders` | Blocked | Full access |
+| `order_items` | Blocked | Full access |
+| `complaints` | Blocked | Full access |
+| `payments` | Blocked | Full access |
+
+The Flask backend uses the `service_role` key which bypasses RLS entirely.
+The policies protect against direct anon key access and the Supabase
+auto-generated REST API being hit without going through Flask.
 
 ---
 
 ## API Reference
 
-All routes are prefixed with `/api/v1`. Protected routes require the header:
+**Base URL:** `https://your-render-app.onrender.com/api/v1`
+
+Protected routes require:
 ```
-X-Session-Token: <token received from login or verify-otp>
+X-Session-Token: <token from login or verify-otp>
 ```
 
 ---
 
 ### Auth — `/api/v1/auth`
 
-#### `POST /signup`
-Creates a new account and sends a 6-digit OTP to the email address.
+| Method | Route | Auth | Description |
+|---|---|---|---|
+| POST | `/signup` | Public | Create account, send OTP |
+| POST | `/verify-otp` | Public | Verify OTP, activate account |
+| POST | `/resend-otp` | Public | Resend fresh OTP |
+| POST | `/login` | Public | Authenticate, get session token |
+| POST | `/logout` | Token | Invalidate session |
+| POST | `/forgot-password` | Public | Send reset OTP |
+| POST | `/reset-password` | Public | Verify OTP, update password |
 
-Request:
+#### POST `/signup`
 ```json
 {
-  "name": "Arjun Sharma",
-  "email": "arjun@example.com",
+  "name": "Priya Sharma",
+  "email": "priya@example.com",
   "password": "securepass123",
   "phone": "9876543210"
 }
 ```
+Response `201` — OTP sent. Call `/verify-otp` next.
 
+#### POST `/verify-otp`
+```json
+{ "email": "priya@example.com", "otp": "482910", "purpose": "signup" }
+```
 Response `201`:
 ```json
 {
-  "success": true,
-  "message": "OTP sent to your email. Please verify to complete registration.",
-  "data": { "email": "arjun@example.com" }
-}
-```
-
----
-
-#### `POST /verify-otp`
-Verifies the OTP and completes account creation (purpose: `signup`) or
-confirms identity before password reset (purpose: `reset`).
-
-Request:
-```json
-{
-  "email": "arjun@example.com",
-  "otp": "482910",
-  "purpose": "signup"
-}
-```
-
-Response `201` (signup):
-```json
-{
-  "success": true,
   "data": {
-    "user": { "id": "...", "name": "Arjun Sharma", "email": "...", "role": "customer" },
-    "token": "a3f8c2..."
+    "user": { "id": "...", "name": "Priya Sharma", "role": "customer" },
+    "token": "a3f8c2d1..."
   }
 }
 ```
 
----
-
-#### `POST /resend-otp`
-Resends a fresh OTP for an active pending session.
-
-Request:
+#### POST `/login`
 ```json
-{
-  "email": "arjun@example.com",
-  "purpose": "signup"
-}
+{ "email": "priya@example.com", "password": "securepass123" }
 ```
 
----
-
-#### `POST /login`
-Authenticates credentials and returns a session token.
-
-Request:
+#### POST `/forgot-password`
 ```json
-{
-  "email": "arjun@example.com",
-  "password": "securepass123"
-}
+{ "email": "priya@example.com" }
 ```
+Always returns the same message regardless of whether email exists.
 
-Response `200`:
+#### POST `/reset-password`
 ```json
-{
-  "success": true,
-  "data": {
-    "user": { "id": "...", "name": "...", "email": "...", "role": "customer", "phone": "..." },
-    "token": "a3f8c2..."
-  }
-}
+{ "email": "priya@example.com", "otp": "193847", "new_password": "newpass456" }
 ```
-
----
-
-#### `POST /logout`
-Invalidates the session token. Requires `X-Session-Token` header.
-
----
-
-#### `POST /forgot-password`
-Sends a reset OTP if the email exists. Always returns the same message to prevent email enumeration.
-
-Request:
-```json
-{ "email": "arjun@example.com" }
-```
-
----
-
-#### `POST /reset-password`
-Verifies the reset OTP and updates the password. Invalidates all existing sessions.
-
-Request:
-```json
-{
-  "email": "arjun@example.com",
-  "otp": "193847",
-  "new_password": "newpassword456"
-}
-```
+Invalidates all existing sessions after password change.
 
 ---
 
 ### Menu — `/api/v1/menu`
 
-#### `GET /` — Public
-Returns the full menu. Supports query parameters:
+| Method | Route | Auth | Description |
+|---|---|---|---|
+| GET | `/` | Public | Full menu with filters |
+| GET | `/categories` | Public | All active categories |
+| GET | `/<item_id>` | Public | Single item |
+| POST | `/` | Admin | Create menu item |
+| PATCH | `/<item_id>` | Admin | Partial update |
+| DELETE | `/<item_id>` | Admin | Remove item |
 
-| Param | Description |
-|---|---|
-| `available` | `true` (default) — filter only available items |
-| `category` | Filter by category name |
-| `search` | Text search across name, description, subcategory |
+#### GET `/` — Query parameters
+| Param | Default | Description |
+|---|---|---|
+| `available` | `true` | Filter to available items only |
+| `category` | — | Filter by category name |
+| `search` | — | Text search across name and description |
 
-#### `GET /categories` — Public
-Returns a sorted list of all active categories.
-
-#### `GET /<item_id>` — Public
-Returns a single menu item by ID.
-
-#### `POST /` — Admin/Staff
-Creates a new menu item.
-
-Request:
+#### POST `/` — Create item
 ```json
 {
   "name": "Paneer Tikka",
@@ -405,40 +343,36 @@ Request:
 }
 ```
 
-#### `PATCH /<item_id>` — Admin/Staff
-Partially updates a menu item. All fields optional.
-
+#### PATCH `/<item_id>` — Update (all fields optional)
 ```json
-{
-  "price": 320,
-  "is_available": false
-}
+{ "price": 320, "is_available": false }
 ```
-
-#### `DELETE /<item_id>` — Admin/Staff
-Permanently removes a menu item.
 
 ---
 
 ### Orders — `/api/v1/orders`
 
-#### `POST /` — Authenticated
-Creates an order. The `order_type` field determines routing logic.
+| Method | Route | Auth | Description |
+|---|---|---|---|
+| POST | `/` | Token | Create order |
+| GET | `/<order_id>` | Token | Get order with items |
+| PATCH | `/<order_id>/status` | Admin | Update status |
+| GET | `/user/<user_id>` | Token | User order history |
 
-Dine-In request:
+#### POST `/` — Dine-In
 ```json
 {
   "order_type": "dine_in",
   "table_id": "T-04",
   "items": [
-    { "menu_item_id": "uuid-here", "quantity": 2 },
-    { "menu_item_id": "uuid-here", "quantity": 1 }
+    { "menu_item_id": "uuid", "quantity": 2 },
+    { "menu_item_id": "uuid", "quantity": 1 }
   ],
-  "special_instructions": "Extra chutney please"
+  "special_instructions": "No onions"
 }
 ```
 
-Delivery request:
+#### POST `/` — Home Delivery
 ```json
 {
   "order_type": "delivery",
@@ -446,7 +380,7 @@ Delivery request:
   "address_line": "12 Marine Lines, near post office",
   "coordinates": { "lat": 18.9388, "lng": 72.8354 },
   "items": [
-    { "menu_item_id": "uuid-here", "quantity": 1 }
+    { "menu_item_id": "uuid", "quantity": 1 }
   ]
 }
 ```
@@ -454,9 +388,8 @@ Delivery request:
 Response `201`:
 ```json
 {
-  "success": true,
   "data": {
-    "order": { ... },
+    "order": { "id": "...", "status": "pending", ... },
     "items": [ ... ],
     "billing": {
       "subtotal": 280.00,
@@ -468,90 +401,73 @@ Response `201`:
 }
 ```
 
-#### `GET /<order_id>` — Authenticated
-Returns order with all line items. Users can only access their own orders.
-
-#### `PATCH /<order_id>/status` — Admin/Staff
-Updates order status. Enforced transition rules:
-
+#### Order Status Transitions
 ```
-pending → confirmed → preparing → ready → out_for_delivery → delivered
-pending → cancelled
-confirmed → cancelled
+pending ──┬──> confirmed ──> preparing ──> ready ──> out_for_delivery ──> delivered
+          └──> cancelled
+confirmed ──> cancelled
 ```
-
-Request:
-```json
-{ "status": "confirmed" }
-```
-
-#### `GET /user/<user_id>` — Authenticated
-Returns all orders for a user, newest first.
+Invalid transitions return `400` with allowed next states listed.
 
 ---
 
 ### Payments — `/api/v1/payments`
 
-#### `POST /verify` — Authenticated
-Mock Razorpay verification. Accepts test mode IDs (`pay_*` and `order_*` prefixed).
-On success, marks order as `paid` and status as `confirmed`, and logs the payment record.
+| Method | Route | Auth | Description |
+|---|---|---|---|
+| POST | `/verify` | Token | Verify payment, confirm order |
+| POST | `/invoice/<order_id>` | Token | Email invoice to user |
 
-Request:
+#### POST `/verify` — Mock Razorpay
+Accepts test-mode IDs. Valid format: `pay_*` and `order_*` with length > 6/8.
 ```json
 {
-  "order_id": "uuid-here",
+  "order_id": "uuid",
   "razorpay_payment_id": "pay_TestMockXYZ123",
   "razorpay_order_id": "order_TestMockABC456"
 }
 ```
+On success: order marked `paid` + `confirmed`, payment record logged.
 
-#### `POST /invoice/<order_id>` — Authenticated
-Sends the HTML invoice email to the user's registered address.
-Only works for orders with `payment_status: paid`.
+#### POST `/invoice/<order_id>`
+Sends HTML invoice to the user's registered email. Only works on `paid` orders.
 
 ---
 
 ### AI — `/api/v1/ai`
 
-#### `POST /recommend` — Authenticated
-Sends a customer prompt to the AI waiter powered by `deepshi-r1`.
-Automatically provides the live menu as context.
+| Method | Route | Auth | Description |
+|---|---|---|---|
+| POST | `/recommend` | Token | Food recommendation |
+| POST | `/triage` | Token | Complaint classification |
+| GET | `/health` | Public | Proxy health check |
 
-Request:
+#### POST `/recommend`
 ```json
-{
-  "prompt": "I want something spicy and vegetarian, not too heavy"
-}
+{ "prompt": "I want something spicy and vegetarian, not too heavy" }
 ```
-
-Response `200`:
+Response:
 ```json
 {
-  "success": true,
   "data": {
-    "recommendation": "Based on your preference...",
+    "recommendation": "Based on your preference I'd suggest...",
     "model_used": "deepshi-r1"
   }
 }
 ```
 
-#### `POST /triage` — Authenticated
-Submits a raw customer complaint. The AI (deepshi-r2) classifies and stores it.
-
-Request:
+#### POST `/triage`
 ```json
 {
   "raw_text": "Bhai khana bohot thanda tha aur delivery mein 1 ghanta lag gaya",
-  "order_id": "uuid-here"
+  "order_id": "uuid"
 }
 ```
-
 Response `201`:
 ```json
 {
-  "success": true,
   "data": {
-    "complaint_id": "uuid-here",
+    "complaint_id": "uuid",
     "triage": {
       "category": "delivery",
       "sentiment": "very_negative",
@@ -562,56 +478,45 @@ Response `201`:
 }
 ```
 
-#### `GET /health`
-Checks if the DevNest proxy is reachable.
-
 ---
 
 ### Admin — `/api/v1/admin`
 
-#### `GET /analytics` — Admin/Staff
-Returns the full analytics dashboard. Supports optional date filters:
+| Method | Route | Auth | Description |
+|---|---|---|---|
+| GET | `/analytics` | Admin | Full analytics dashboard |
+| GET | `/complaints` | Admin | All complaints with filters |
+| PATCH | `/complaints/<id>/status` | Admin | Update complaint status |
+| GET | `/users` | Admin | All registered users |
 
-Query params: `from=2025-01-01` and `to=2025-12-31`
+#### GET `/analytics` — Query params: `from=YYYY-MM-DD`, `to=YYYY-MM-DD`
 
 Response includes:
-- Total orders, paid orders, cancelled orders
-- Dine-in vs delivery breakdown
-- Total revenue, GST collected, subtotal, average order value
-- Daily revenue breakdown (sorted newest first)
-- Top 20 selling items sorted by quantity (Pareto distribution)
+- Total, paid, cancelled order counts
+- Dine-in vs delivery split
+- Total revenue, GST collected, average order value
+- Daily revenue breakdown sorted newest first
+- Top 20 selling items by quantity sold (Pareto)
 - Complaints breakdown by priority and status
 - Menu availability stats
-
-#### `GET /complaints` — Admin/Staff
-Returns all complaints. Filter by `status` or `priority` query params.
-
-#### `PATCH /complaints/<complaint_id>/status` — Admin/Staff
-Updates complaint status to `open`, `in_review`, `resolved`, or `closed`.
-
-#### `GET /users` — Admin/Staff
-Returns all registered users (excludes password_hash).
 
 ---
 
 ### Postal — `/api/v1/postal`
 
-#### `GET /<pincode>` — Authenticated
-Resolves a 6-digit Indian pincode using the India Post public API.
+| Method | Route | Auth | Description |
+|---|---|---|---|
+| GET | `/<pincode>` | Token | Resolve 6-digit Indian pincode |
 
-Response `200`:
+Response:
 ```json
 {
-  "success": true,
   "data": {
-    "success": true,
     "location": {
       "pincode": "400001",
       "district": "Mumbai",
       "state": "Maharashtra",
       "country": "India",
-      "division": "Mumbai",
-      "region": "Mumbai HQ",
       "areas": ["Fort", "GPO Mumbai", "Ballard Estate"]
     }
   }
@@ -620,146 +525,139 @@ Response `200`:
 
 ---
 
-## AI Model Routing
+## Billing Engine
 
-| Feature | Model | Reasoning |
+All calculations in `services/billing_service.py` run before any DB write.
+Prices are always fetched from the live `menu_items` table — frontend-supplied
+prices are intentionally ignored to prevent tampering.
+
+```
+unit_price × quantity    = item_total      (per line item)
+sum(item_total)          = subtotal
+subtotal × 0.18          = gst_amount
+subtotal + gst_amount    = total_amount
+```
+
+All values rounded to 2 decimal places.
+
+---
+
+## AI Service — DevNest Proxy
+
+Both models are called via the DevNest proxy at:
+`https://devnest-proxy-server.onrender.com/v1/proxy/ai`
+
+Payload format:
+```json
+{ "model": "deepshi-r1", "prompt": "...", "system": "..." }
+```
+
+Response extraction chain: `reply → response → content → message → text → output`
+
+| Feature | Model | Reason |
 |---|---|---|
-| AI Waiter Recommendations | `deepshi-r1` | Fast reasoning, conversational, good for food pairing |
-| Complaint Triage | `deepshi-r2` | Deeper semantic understanding, strict JSON output |
+| AI Waiter Recommendation | `deepshi-r1` | Fast reasoning, conversational |
+| Complaint Triage | `deepshi-r2` | Deep semantic analysis, strict JSON |
 
-The triage pipeline instructs deepshi-r2 to return only a raw JSON object.
-The backend validates the response against allowed enum values before writing
-to the database. Malformed responses are caught and a `503` is returned.
+Both calls include:
+- `_strip_thinking` — strips leaked `<thinking>` blocks and raw SSE reasoning fragments from deepshi model responses
+- Auto-retry on HTTP 502 / 503 / 504 (cold-start protection on Render)
+- Proxy error marker detection
 
 ---
 
 ## OTP Flow
 
 ```
-Client                    Backend                   Supabase            Gmail
-  |                          |                          |                  |
-  |-- POST /signup --------> |                          |                  |
-  |                          |-- DELETE old OTP ------> |                  |
-  |                          |-- INSERT new OTP ------> |                  |
-  |                          |-- send_otp_email ------> |                  |
-  |                          |                          |           (email sent)
-  |<-- 201 OTP sent -------- |                          |                  |
-  |                          |                          |                  |
-  |-- POST /verify-otp ----> |                          |                  |
-  |                          |-- SELECT otp_record ----> |                  |
-  |                          |-- check expiry           |                  |
-  |                          |-- UPDATE is_verified ---> |                  |
-  |                          |-- INSERT user ----------> |                  |
-  |                          |-- INSERT session -------> |                  |
-  |<-- 201 token + user ---- |                          |                  |
+Client              Flask Backend            Supabase            Gmail
+  |                      |                       |                  |
+  |-- POST /signup ────> |                       |                  |
+  |                      |-- DELETE old OTPs --> |                  |
+  |                      |-- INSERT new OTP ---> |                  |
+  |                      |-- send OTP email ─────────────────────> |
+  |<── 201 ──────────── |                       |            email sent
+  |                      |                       |                  |
+  |-- POST /verify-otp > |                       |                  |
+  |                      |-- SELECT otp record -> |                  |
+  |                      |   check expiry         |                  |
+  |                      |-- UPDATE is_verified -> |                  |
+  |                      |-- INSERT user ──────-> |                  |
+  |                      |-- INSERT session ───-> |                  |
+  |<── 201 token ─────── |                       |                  |
 ```
 
-OTP records are marked `is_verified = true` immediately after use so they
-cannot be replayed. The Supabase cron job hard-deletes all expired records
-every 2 minutes.
+OTPs are marked `is_verified = true` immediately on use — replay blocked.
+Cron job hard-deletes all expired records every 2 minutes.
 
 ---
 
-## Order Status Transitions
+## Deployment
 
-```
-         +---> cancelled
-         |
-pending --+---> confirmed ---> preparing ---> ready ---> out_for_delivery ---> delivered
-                    |
-                    +---> cancelled
-```
+### Render Setup
 
-Invalid transitions are rejected with a `400` error listing the allowed next states.
-
----
-
-## Billing Engine
-
-All calculations happen in `services/billing_service.py` before any database write.
-
-```
-unit_price × quantity = item_total    (per line item)
-sum(item_total)       = subtotal
-subtotal × 0.18       = gst_amount
-subtotal + gst_amount = total_amount
-```
-
-All values are rounded to 2 decimal places. Prices are always read from the
-live `menu_items` table at order time — the frontend-supplied price is ignored
-to prevent tampering.
-
----
-
-## Deployment on Render
-
-1. Create a new **Web Service** on Render.
-2. Connect your GitHub repository.
-3. Set the **Root Directory** to `backend`.
-4. Set the **Build Command**:
+1. Create a **Web Service** on [render.com](https://render.com)
+2. Connect your GitHub repository
+3. Set **Root Directory** to `backend`
+4. Set **Build Command:**
    ```
    pip install -r requirements.txt
    ```
-5. Set the **Start Command**:
+5. Set **Start Command:**
    ```
-   gunicorn app:create_app()
+   gunicorn "app:create_app()"
    ```
-6. Add all environment variables from the table above in the **Environment** tab.
-7. Deploy.
+6. Add all environment variables in the **Environment** tab
+7. Deploy
 
-Render will assign a public URL. Set this URL as the `FRONTEND_ORIGIN` variable
-(or set `*` during development).
+Health check endpoint: `GET /health`
+
+### Gmail App Password
+
+1. Google Account → Security → 2-Step Verification (must be ON)
+2. App Passwords → Create one for Mail
+3. Copy the 16-character password → set as `GMAIL_APP_PASSWORD`
+4. Set `GMAIL_SENDER` to the same Gmail address
 
 ---
 
-## Gmail App Password Setup
+## Submission Checklist
 
-1. Go to your Google Account → Security → 2-Step Verification (must be enabled).
-2. Go to **App Passwords** and create a new one for "Mail".
-3. Copy the 16-character password and set it as `GMAIL_APP_PASSWORD` in Render.
-4. Set `GMAIL_SENDER` to the same Gmail address.
-
-Do not use your actual Gmail login password. App Passwords bypass 2FA for
-SMTP without exposing your main credentials.
+| Requirement | Status |
+|---|---|
+| GitHub Repository | Push `restaurant-hybrid-system/` to your repo |
+| Complete Source Code | All backend files in `backend/` |
+| Deployment Link | Render URL after deploy |
+| Demo Video | Record a Postman walkthrough of key routes |
+| README Documentation | This file |
 
 ---
 
-## Progress Status
+## Progress
 
 | Module | Status |
 |---|---|
-| Supabase schema (all tables + indices + triggers) | Done |
-| Auth — signup, login, logout | Done |
-| Auth — OTP verify, resend, forgot password, reset | Done |
-| OTP persistence in Supabase `user_otps` table | Done |
-| Session token management in `sessions` table | Done |
-| Menu CRUD (public read + admin write) | Done |
+| Supabase schema — all tables, indices, triggers, RLS, cron jobs | Done |
+| Auth — signup, OTP verify, login, logout | Done |
+| Auth — resend OTP, forgot password, reset password | Done |
+| OTP persistence in `user_otps` Supabase table | Done |
+| Session tokens in `sessions` table | Done |
+| Menu CRUD — public read + admin write | Done |
 | Category filter, text search, availability toggle | Done |
-| Hybrid order creation (dine-in + delivery) | Done |
+| Hybrid order creation — dine-in and delivery | Done |
 | India Post pincode resolution + Mapbox coordinates | Done |
-| Order status management with transition validation | Done |
+| Order status transitions with validation | Done |
 | Billing engine — subtotal, 18% GST, total | Done |
 | Mock Razorpay payment verification | Done |
-| Invoice HTML email via Gmail SMTP | Done |
-| AI Waiter Recommendation (deepshi-r1) | Done |
-| AI Complaint Triage (deepshi-r2, strict JSON) | Done |
+| HTML invoice email via Gmail SMTP | Done |
+| AI Waiter Recommendation via deepshi-r1 | Done |
+| AI Complaint Triage via deepshi-r2 | Done |
+| `_strip_thinking` — reasoning leak scrubber | Done |
+| Auto-retry on proxy 502 / 503 / 504 | Done |
 | Admin analytics — revenue, Pareto top items | Done |
 | Admin complaints management | Done |
 | Auth middleware — require_auth / require_admin | Done |
 | Input validators — email, phone, pincode, UUID | Done |
 | Standardised JSON response wrapper | Done |
+| Row Level Security on all 8 tables | Done |
+| pg_cron jobs registered via SQL | Done |
 | Flutter Web frontend | Pending |
-
----
-
-## Pending — Flutter Web Frontend
-
-The backend is fully operational and ready for Flutter integration.
-The next phase covers:
-
-- QR code scanner for table-based dine-in session initiation
-- Customer-facing order flow (menu browse, cart, checkout)
-- AI waiter chat widget
-- Order tracking screen (consumes `TRACKING_BASE_URL`)
-- Admin dashboard UI (analytics, order management, menu editor)
-- Razorpay Flutter SDK integration (test mode)
