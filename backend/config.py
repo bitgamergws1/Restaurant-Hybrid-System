@@ -6,9 +6,10 @@ class Config:
     SUPABASE_URL = os.environ.get("SUPABASE_URL")
     SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_KEY")
 
-    # gmail smtp
-    GMAIL_SENDER = os.environ.get("GMAIL_SENDER")
-    GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD")
+    # brevo http api (replaces gmail smtp)
+    BREVO_API_KEY = os.environ.get("BREVO_API_KEY")
+    BREVO_SENDER_EMAIL = os.environ.get("BREVO_SENDER_EMAIL")
+    BREVO_SENDER_NAME = os.environ.get("BREVO_SENDER_NAME", "Spice Route")
 
     # devnest proxy
     PROXY_URL = "https://devnest-proxy-server.onrender.com/v1/proxy/ai"
@@ -30,3 +31,4 @@ class Config:
 
     # external apis
     POSTAL_API_BASE = "https://api.postalpincode.in/pincode"
+    BREVO_API_URL = "https://api.brevo.com/v3/smtp/email"
