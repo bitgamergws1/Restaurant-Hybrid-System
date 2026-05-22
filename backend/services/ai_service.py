@@ -15,8 +15,8 @@ DEEPSHI_R2 = "deepshi-r2"
 
 MAX_RETRIES = 1
 RETRY_WAIT = 4
-TIMEOUT_R1 = 35
-TIMEOUT_R2 = 70
+TIMEOUT_R1 = 45   # bumped from 35 — large menu context needs more time
+TIMEOUT_R2 = 90   # bumped from 70 — R2 thinking model can take 80 s
 
 _PROXY_ERROR_MARKERS = ("too slow", "timed out", "provider", "unavailable", "error:")
 
@@ -94,7 +94,43 @@ def _strip_thinking(text: str) -> str:
     return text.strip()
 
 
-def _call_proxy(model: str, prompt: str, system: str = None, timeout: int = 35) -> str | None:
+# ── FIX #2: Identity leak stripping ──────────────────────────────────────────
+# Deepshi-r1 sometimes leaks its own name/company even with a strong system
+# prompt. Strip it from the final reply before sending to the Flutter app.
+
+_IDENTITY_PATTERNS = [
+    # "Main Deepshi Flow hoon", "I am Deepshi", "I'm Deepshi" etc.
+    re.compile(
+        r'\b(?:main|i\'?m|i am|mera naam|my name is)\s+deepshi\s*(?:flow|r1|r2)?\b',
+        re.IGNORECASE
+    ),
+    # "developed by Evermind Labs", "by Evermind" etc.
+    re.compile(r'\bEvermind\s*Labs?\b', re.IGNORECASE),
+    # "I am a private and uncensored AI"
+    re.compile(
+        r'\b(?:private|uncensored)\s+(?:AI|assistant|model)\b',
+        re.IGNORECASE
+    ),
+    # "ex-Google engineer", "ex-military founders"
+    re.compile(r'\bex-(?:Google|military|military founders)\b', re.IGNORECASE),
+    # Any direct mention of the underlying model name
+    re.compile(r'\bDeepshi(?:-R[12])?\b', re.IGNORECASE),
+]
+
+_RESTAURANT_FALLBACK = (
+    f"Main {Config.RESTAURANT_NAME} ka AI Waiter hoon! "
+    "Aapko kuch recommend kar sakta hoon? 😊"
+)
+
+
+def _sanitise_identity(text: str) -> str:
+    """Replace any leaked AI identity with a restaurant-appropriate response."""
+    for pattern in _IDENTITY_PATTERNS:
+        text = pattern.sub(Config.RESTAURANT_NAME + " AI Waiter", text)
+    return text.strip()
+
+
+def _call_proxy(model: str, prompt: str, system: str = None, timeout: int = 45) -> str | None:
     payload = {
         "model": model,
         "prompt": prompt,
@@ -163,11 +199,11 @@ def _call_proxy(model: str, prompt: str, system: str = None, timeout: int = 35) 
     return None
 
 
-# ── FIX: smart keyword-based menu selection ──────────────────────────────────
-# Problem was menu_context[:50] — only first 50 items by sort_order were sent,
-# so most of the 700-item menu was invisible to the AI.
-# Now we score items by keyword relevance to the user prompt and send the top
-# 60 matches (up to 40 relevant + 20 popular fallbacks), covering the whole menu.
+# ── Smart keyword-based menu selection ───────────────────────────────────────
+# Scores every menu item against the user prompt and returns the top 60
+# most relevant items (up to 40 exact-match + 20 diverse-category fallbacks).
+# This replaced the old menu_context[:50] slice that only sent the first 50
+# items by sort_order, making 650+ items invisible to the AI.
 
 _STOP_WORDS = {
     "i", "want", "need", "give", "me", "please", "something", "a", "an",
@@ -175,77 +211,96 @@ _STOP_WORDS = {
     "any", "some", "can", "you", "have", "do", "your", "my", "and", "or",
     "for", "with", "without", "not", "but", "so", "its", "it", "on",
     "new", "dish", "food", "item", "recommend", "suggest", "show",
+    # Hinglish stop words
+    "kya", "hai", "koi", "mujhe", "de", "do", "bata", "chahiye", "acha",
+    "accha", "theek", "main", "mein", "hoon", "ho", "ka", "ki", "ke",
+    "se", "ko", "bhi", "aur", "ya", "ek", "kuch", "sab", "bahut",
 }
 
 _CATEGORY_ALIASES: dict[str, list[str]] = {
-    "burger":      ["Burgers"],
-    "burgers":     ["Burgers"],
-    "pizza":       ["Pizza"],
-    "biryani":     ["Rice & Biryani"],
-    "rice":        ["Rice & Biryani"],
-    "noodles":     ["Chinese", "Pasta"],
-    "pasta":       ["Pasta"],
-    "chinese":     ["Chinese"],
-    "south":       ["South Indian"],
-    "dosa":        ["South Indian"],
-    "idli":        ["South Indian"],
-    "starter":     ["Starters"],
-    "starters":    ["Starters"],
-    "soup":        ["Soups"],
-    "salad":       ["Salads"],
-    "bread":       ["Breads"],
-    "roti":        ["Breads"],
-    "naan":        ["Breads"],
-    "dal":         ["Dal & Lentils"],
-    "lentil":      ["Dal & Lentils"],
-    "paneer":      ["Paneer"],
-    "veg":         ["Veg Main Course", "Paneer", "Dal & Lentils"],
-    "vegetarian":  ["Veg Main Course", "Paneer", "Dal & Lentils"],
-    "nonveg":      ["Non-Veg Curries", "Tandoori & Grill", "Seafood"],
+    "burger":        ["Burgers"],
+    "burgers":       ["Burgers"],
+    "pizza":         ["Pizza"],
+    "biryani":       ["Rice & Biryani"],
+    "rice":          ["Rice & Biryani"],
+    "noodles":       ["Chinese", "Pasta"],
+    "pasta":         ["Pasta"],
+    "chinese":       ["Chinese"],
+    "south":         ["South Indian"],
+    "dosa":          ["South Indian"],
+    "idli":          ["South Indian"],
+    "starter":       ["Starters"],
+    "starters":      ["Starters"],
+    "soup":          ["Soups"],
+    "salad":         ["Salads"],
+    "bread":         ["Breads"],
+    "roti":          ["Breads"],
+    "naan":          ["Breads"],
+    "dal":           ["Dal & Lentils"],
+    "lentil":        ["Dal & Lentils"],
+    "paneer":        ["Paneer"],
+    "veg":           ["Veg Main Course", "Paneer", "Dal & Lentils"],
+    "vegetarian":    ["Veg Main Course", "Paneer", "Dal & Lentils"],
+    "nonveg":        ["Non-Veg Curries", "Tandoori & Grill", "Seafood"],
     "nonvegetarian": ["Non-Veg Curries", "Tandoori & Grill"],
-    "chicken":     ["Non-Veg Curries", "Starters", "Chinese"],
-    "mutton":      ["Non-Veg Curries", "Mughlai"],
-    "fish":        ["Seafood", "Non-Veg Curries"],
-    "prawn":       ["Seafood", "Non-Veg Curries"],
-    "seafood":     ["Seafood"],
-    "sweet":       ["Desserts", "Ice Cream"],
-    "dessert":     ["Desserts"],
-    "icecream":    ["Ice Cream"],
-    "drink":       ["Beverages", "Juices & Shakes"],
-    "juice":       ["Juices & Shakes"],
-    "coffee":      ["Beverages"],
-    "tea":         ["Beverages"],
-    "shake":       ["Juices & Shakes"],
-    "lassi":       ["Beverages", "Juices & Shakes"],
-    "thali":       ["Thalis"],
-    "streetfood":  ["Street Food"],
-    "chaat":       ["Street Food"],
-    "mughlai":     ["Mughlai"],
-    "tandoor":     ["Tandoori & Grill"],
-    "grill":       ["Tandoori & Grill"],
-    "continental": ["Continental"],
-    "breakfast":   ["Breakfast"],
-    "fast":        ["Fast Food"],
-    "fastfood":    ["Fast Food"],
+    "chicken":       ["Non-Veg Curries", "Starters", "Chinese"],
+    "mutton":        ["Non-Veg Curries", "Mughlai"],
+    "fish":          ["Seafood", "Non-Veg Curries"],
+    "prawn":         ["Seafood", "Non-Veg Curries"],
+    "seafood":       ["Seafood"],
+    "sweet":         ["Desserts", "Ice Cream"],
+    "dessert":       ["Desserts"],
+    "icecream":      ["Ice Cream"],
+    "drink":         ["Beverages", "Juices & Shakes"],
+    "juice":         ["Juices & Shakes"],
+    "coffee":        ["Beverages"],
+    "tea":           ["Beverages"],
+    "shake":         ["Juices & Shakes"],
+    "lassi":         ["Beverages", "Juices & Shakes"],
+    "thali":         ["Thalis"],
+    "streetfood":    ["Street Food"],
+    "chaat":         ["Street Food"],
+    "mughlai":       ["Mughlai"],
+    "tandoor":       ["Tandoori & Grill"],
+    "grill":         ["Tandoori & Grill"],
+    "continental":   ["Continental"],
+    "breakfast":     ["Breakfast"],
+    "fast":          ["Fast Food"],
+    "fastfood":      ["Fast Food"],
+    # Hinglish aliases
+    "khana":         ["Veg Main Course", "Non-Veg Curries"],
+    "north":         ["Veg Main Course", "Non-Veg Curries", "Mughlai", "Breads"],
+    "goa":           ["Seafood", "Continental"],
+    "goanese":       ["Seafood", "Continental"],
+    "sabzi":         ["Veg Main Course"],
+    "gosht":         ["Non-Veg Curries", "Mughlai"],
+    "murgh":         ["Non-Veg Curries"],
+    "machli":        ["Seafood"],
+    "meetha":        ["Desserts", "Ice Cream"],
+    "thand":         ["Beverages", "Ice Cream", "Juices & Shakes"],
 }
 
 
-def _select_menu_items(user_prompt: str, menu_context: list, max_relevant: int = 40, max_total: int = 60) -> list:
+def _select_menu_items(
+    user_prompt: str,
+    menu_context: list,
+    max_relevant: int = 40,
+    max_total: int = 60
+) -> list:
     """
     Score every item against the user prompt and return the most relevant ones.
     Falls back to a spread of popular items when nothing matches well.
+    Now uses subcategory and tags (fields were missing in the old Supabase query).
     """
     prompt_lower = user_prompt.lower()
 
-    # tokenise — remove stop words
     raw_tokens = re.findall(r"[a-z]+", prompt_lower)
     tokens = [t for t in raw_tokens if t not in _STOP_WORDS and len(t) > 2]
 
-    # resolve category hints from aliases
     hinted_categories: set[str] = set()
     for token in raw_tokens:
-        for cats in _CATEGORY_ALIASES.get(token, []):
-            hinted_categories.add(cats)
+        for cat in _CATEGORY_ALIASES.get(token, []):
+            hinted_categories.add(cat)
 
     scored: list[tuple[int, dict]] = []
     for item in menu_context:
@@ -257,13 +312,12 @@ def _select_menu_items(user_prompt: str, menu_context: list, max_relevant: int =
         tags         = [t.lower() for t in (item.get("tags") or [])]
         tags_str     = " ".join(tags)
 
-        # exact category hint (strong signal)
         if item.get("category") in hinted_categories:
             score += 6
 
         for token in tokens:
             if token in name_lower:
-                score += 5          # name match is most valuable
+                score += 5
             if token in tags_str:
                 score += 3
             if token in cat_lower or token in subcat_lower:
@@ -271,9 +325,8 @@ def _select_menu_items(user_prompt: str, menu_context: list, max_relevant: int =
             if token in desc_lower:
                 score += 1
 
-        # spicy / mild / light hints via tags
         for mood_token in raw_tokens:
-            if mood_token in ("spicy", "hot") and "spicy" in tags_str:
+            if mood_token in ("spicy", "hot", "teekha") and "spicy" in tags_str:
                 score += 2
             if mood_token in ("mild", "light", "healthy") and any(
                 t in tags_str for t in ("mild", "light", "healthy")
@@ -283,20 +336,18 @@ def _select_menu_items(user_prompt: str, menu_context: list, max_relevant: int =
                 t in tags_str for t in ("crispy", "fried")
             ):
                 score += 2
-            if mood_token in ("creamy", "rich") and any(
+            if mood_token in ("creamy", "rich", "makhani") and any(
                 t in tags_str for t in ("creamy", "rich")
             ):
                 score += 2
 
         scored.append((score, item))
 
-    # sort by score descending
     scored.sort(key=lambda x: x[0], reverse=True)
 
-    relevant   = [item for score, item in scored if score > 0][:max_relevant]
-    fallback   = [item for score, item in scored if score == 0]
+    relevant = [item for score, item in scored if score > 0][:max_relevant]
+    fallback = [item for score, item in scored if score == 0]
 
-    # pick a diverse fallback spread across categories when we need padding
     if len(relevant) < max_total:
         seen_cats: set[str] = {item.get("category") for item in relevant}
         diverse_fallback: list[dict] = []
@@ -308,7 +359,6 @@ def _select_menu_items(user_prompt: str, menu_context: list, max_relevant: int =
                 diverse_fallback.append(item)
                 seen_cats.add(cat)
 
-        # if still need more, just append
         remaining_slots = max_total - len(relevant) - len(diverse_fallback)
         extra = [
             item for item in fallback
@@ -321,36 +371,57 @@ def _select_menu_items(user_prompt: str, menu_context: list, max_relevant: int =
 
 
 def get_ai_recommendation(user_prompt: str, menu_context: list) -> dict:
-    # ── FIX: use smart selection instead of naive [:50] ──
     selected_items = _select_menu_items(user_prompt, menu_context)
 
+    print(f"[ai_service] Selected {len(selected_items)} items for prompt: {user_prompt[:60]}")
+
     menu_lines = "\n".join(
-        f"- {item['name']} ({item['category']}) — Rs. {item['price']}"
+        f"- {item['name']} ({item.get('category', '')})"
+        + (f" / {item['subcategory']}" if item.get("subcategory") else "")
+        + f" — Rs. {item['price']}"
         + (f" | {item['description']}" if item.get("description") else "")
         for item in selected_items
     )
 
-    # ── FIX: stronger system prompt to prevent model from breaking character ──
-    system = (
-        f"You are the AI Waiter at {Config.RESTAURANT_NAME}, an Indian multi-cuisine restaurant. "
-        f"Your ONLY job is to help customers choose dishes from the {Config.RESTAURANT_NAME} menu listed below. "
-        "STRICT RULES you must NEVER break:\n"
-        "1. You are the AI Waiter of this restaurant — never say you are any other AI, product, or company.\n"
-        "2. Only recommend items that exist in the menu list below. Never invent dishes or prices.\n"
-        "3. Always answer in the context of this restaurant's menu. If the customer asks about prices, "
-        "give the exact price from the menu list.\n"
-        "4. Recommend 3–4 dishes that match the customer's mood or request, with one warm reason each.\n"
-        "5. Keep tone warm, helpful, and conversational — like a friendly human waiter.\n"
-        "6. Do not use bullet headers, bold markdown, or numbered lists — write naturally in flowing sentences.\n"
-        "7. If the customer asks something completely unrelated to food or the restaurant, "
-        f"gently steer them back: 'I'm your waiter at {Config.RESTAURANT_NAME} — let me help you pick "
-        "something delicious from our menu!'\n\n"
-        f"--- {Config.RESTAURANT_NAME} MENU (today's selection) ---\n"
+    # ── FIX #3: Character-lock via BOTH system field AND prompt body ──────────
+    # Deepshi-r1 sometimes ignores system-only instructions and reverts to its
+    # own identity ("Deepshi Flow by Evermind Labs"). Embedding the identity
+    # rules at the top of the prompt body as well makes them impossible to miss.
+    # The system field is kept as a reinforcing layer.
+
+    identity_block = (
+        f"=== IDENTITY LOCK — READ THIS FIRST ===\n"
+        f"You are the AI Waiter at {Config.RESTAURANT_NAME}, an Indian multi-cuisine restaurant.\n"
+        f"You work EXCLUSIVELY for {Config.RESTAURANT_NAME}.\n"
+        "RULES YOU MUST NEVER BREAK — violating any rule is a critical failure:\n"
+        "  R1. NEVER say you are Deepshi, Deepshi Flow, or any other AI product or company.\n"
+        "  R2. NEVER mention Evermind Labs, ex-Google engineers, or any developer/creator.\n"
+        "  R3. If the customer asks 'who are you?' or 'which AI are you?', answer ONLY:\n"
+        f"      'Main {Config.RESTAURANT_NAME} ka AI Waiter hoon — aapko best dish choose karne mein help karta hoon!'\n"
+        "  R4. Only recommend dishes that exist in the MENU LIST below. Never invent items or prices.\n"
+        "  R5. Always give exact prices from the menu list when asked about cost.\n"
+        "  R6. Recommend 3–4 dishes matching the customer's mood/request, with one warm reason each.\n"
+        "  R7. Write naturally in flowing sentences. No bold, no bullet headers, no numbered lists.\n"
+        "  R8. Reply in the same language the customer uses (Hindi, English, or Hinglish).\n"
+        f"  R9. If the question has nothing to do with food, gently say: 'Main {Config.RESTAURANT_NAME} ka "
+        "waiter hoon — kuch delicious order karein!'\n"
+        "=== END IDENTITY LOCK ===\n\n"
+        f"--- {Config.RESTAURANT_NAME} MENU (today's available selection) ---\n"
         f"{menu_lines}\n"
-        "--- END OF MENU ---"
+        "--- END OF MENU ---\n\n"
+        f"Customer message: {user_prompt}"
     )
 
-    result = _call_proxy(DEEPSHI_R1, user_prompt, system=system, timeout=TIMEOUT_R1)
+    system = (
+        f"You are the AI Waiter at {Config.RESTAURANT_NAME}. "
+        f"You work ONLY for {Config.RESTAURANT_NAME}. "
+        "NEVER reveal you are Deepshi, Deepshi Flow, or any other AI product. "
+        "NEVER mention Evermind Labs or any developer. "
+        "Only discuss this restaurant's menu. "
+        "Reply in the language the customer uses."
+    )
+
+    result = _call_proxy(DEEPSHI_R1, identity_block, system=system, timeout=TIMEOUT_R1)
 
     if not result:
         return {
@@ -360,9 +431,12 @@ def get_ai_recommendation(user_prompt: str, menu_context: list) -> dict:
             "message": "AI recommendation service is currently unavailable. Please try again."
         }
 
+    # ── FIX #4: Post-process to strip any leaked identity in the reply ────────
+    clean_result = _sanitise_identity(result)
+
     return {
         "success": True,
-        "recommendation": result,
+        "recommendation": clean_result,
         "model_used": DEEPSHI_R1
     }
 
