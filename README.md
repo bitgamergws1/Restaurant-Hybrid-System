@@ -54,49 +54,141 @@ Restaurant-Hybrid-System/
 │       ├── response.py                  Standardised success_response / error_response helpers
 │       └── validators.py                Email, phone, pincode, UUID format validators
 │
-├── Flutter Project Code/                Flutter application source (Android + Web + Desktop)
-│   ├── pubspec.yaml                     Dependencies — Riverpod, GoRouter, Dio, fl_chart, etc.
+├── Flutter Project Code/                Flutter application source (Android + Web)
+│   ├── pubspec.yaml                     All dependencies — Riverpod, GoRouter, Dio, fl_chart, etc.
 │   └── lib/
-│       ├── main.dart                    Entry point — ProviderScope, SharedPreferences seeding
-│       ├── core/
-│       │   ├── constants/
-│       │   │   ├── app_colors.dart      Single source of truth for all colours
-│       │   │   └── app_strings.dart     All user-facing text strings
-│       │   ├── network/
-│       │   │   ├── api_client.dart      Dio wrapper — auth interceptor, logging, error envelope
-│       │   │   └── api_endpoints.dart   All route strings and base URL config
-│       │   ├── providers/
-│       │   │   └── shared_preferences_provider.dart
-│       │   ├── router/
-│       │   │   ├── app_router.dart      GoRouter — guards, redirects, shell routes
-│       │   │   └── route_names.dart     RouteNames and RoutePaths constants
-│       │   ├── theme/
-│       │   │   └── app_theme.dart       Dark theme — Syne display font, DM Sans body
-│       │   └── widgets/
-│       │       └── app_nav_shell.dart   Responsive shell — bottom nav (mobile) / sidebar (web)
+│       ├── main.dart                    Entry point — ProviderScope, SharedPreferences seeding, dark theme
 │       │
-│       └── features/
-│           ├── auth/                    Signup, Login, OTP, Forgot Password, Reset Password
-│           ├── home/                    Landing dashboard, recent orders, quick actions
-│           ├── menu/                    Menu grid/list, category chips, search, cart add
-│           ├── cart/                    Cart state, quantity stepper, bill summary, checkout CTA
-│           ├── orders/                  Order placement (dine-in + delivery), detail, live tracking
-│           ├── payments/                Mock Razorpay screen, payment success state
-│           ├── profile/                 User info, navigation shortcuts, logout confirmation
-│           ├── ai/                      AI waiter chat interface, complaint triage form
+│       ├── core/                        App-wide infrastructure — no feature logic here
+│       │   ├── constants/
+│       │   │   ├── app_colors.dart      Single colour palette — backgrounds, surfaces, semantic colours
+│       │   │   └── app_strings.dart     All user-facing text strings in one place
+│       │   ├── network/
+│       │   │   ├── api_client.dart      Dio wrapper — _AuthInterceptor, _LoggingInterceptor, envelope unwrap
+│       │   │   └── api_endpoints.dart   ApiConfig (baseUrl, token key, timeout) + all route strings
+│       │   ├── providers/
+│       │   │   └── shared_preferences_provider.dart   sharedPreferencesProvider + apiClientProvider
+│       │   ├── router/
+│       │   │   ├── app_router.dart      GoRouter — role-based redirect, StatefulShellRoute, ShellRoute
+│       │   │   └── route_names.dart     RouteNames (named routes) + RoutePaths (path strings)
+│       │   ├── theme/
+│       │   │   └── app_theme.dart       Full MaterialApp dark ThemeData — Syne + DM Sans, all component themes
+│       │   └── widgets/
+│       │       └── app_nav_shell.dart   Responsive customer shell — bottom nav (< 800 px) / left sidebar (>= 800 px)
+│       │
+│       └── features/                    One folder per product feature, each with data / domain / presentation
+│           │
+│           ├── auth/
+│           │   ├── data/
+│           │   │   └── auth_repository.dart         Login, signup, OTP verify/resend, forgot/reset password, session persist
+│           │   ├── domain/
+│           │   │   └── models/
+│           │   │       ├── auth_state.dart           Sealed AuthState — Initial, Loading, Authenticated, Unauthenticated, Error, OtpPending
+│           │   │       └── user_model.dart           Immutable UserModel — id, name, email, role, phone
+│           │   └── presentation/
+│           │       ├── providers/
+│           │       │   └── auth_provider.dart        AuthNotifier (Notifier<AuthState>) — drives GoRouter redirects
+│           │       ├── screens/
+│           │       │   ├── splash_screen.dart        Animated logo + grid painter — holds while session is checked
+│           │       │   ├── login_screen.dart         Email + password form, forgot password link
+│           │       │   ├── signup_screen.dart        Name, email, phone (optional), password form
+│           │       │   ├── otp_screen.dart           6-digit Pinput — handles both signup verify and reset OTP phases
+│           │       │   └── forgot_password_screen.dart   Email entry → triggers reset OTP
+│           │       └── widgets/
+│           │           ├── auth_text_field.dart      Branded input — animated label, focus glow, password toggle
+│           │           └── spice_button.dart         Primary CTA (gradient) + outline variant
+│           │
+│           ├── home/
+│           │   └── presentation/
+│           │       └── screens/
+│           │           └── home_screen.dart          Landing dashboard — hero greeting, quick actions, dining mode cards, recent orders
+│           │
+│           ├── menu/
+│           │   ├── data/
+│           │   │   └── menu_repository.dart          getMenu (with filters) + getCategories
+│           │   ├── domain/
+│           │   │   └── models/
+│           │   │       └── menu_item_model.dart       MenuItemModel — id, name, price, category, tags, isVeg, isSpicy
+│           │   └── presentation/
+│           │       ├── providers/
+│           │       │   └── menu_provider.dart         menuItemsProvider + categoriesProvider + selectedCategoryProvider + searchQueryProvider
+│           │       ├── screens/
+│           │       │   └── menu_screen.dart           Responsive grid (1–4 cols), floating search bar, category chip strip
+│           │       └── widgets/
+│           │           └── menu_item_card.dart        Card with image, veg/spicy badges, add-to-cart / qty stepper
+│           │
+│           ├── cart/
+│           │   └── presentation/
+│           │       ├── providers/
+│           │       │   └── cart_provider.dart         CartNotifier — add, remove, removeAll, clear + derived subtotal/GST/total providers
+│           │       └── screens/
+│           │           └── cart_screen.dart           Item list with qty stepper, bill summary panel, checkout CTA
+│           │
+│           ├── orders/
+│           │   ├── data/
+│           │   │   └── orders_repository.dart         createOrder, getOrder, getUserOrders, sendInvoice
+│           │   ├── domain/
+│           │   │   └── models/
+│           │   │       └── order_model.dart           OrderModel + OrderItemModel — status helpers, shortId, eta, statusStep
+│           │   └── presentation/
+│           │       ├── providers/
+│           │       │   └── orders_provider.dart       userOrdersProvider, orderDetailProvider, CreateOrderNotifier (sealed state)
+│           │       └── screens/
+│           │           ├── checkout_screen.dart       Order type picker, dine-in (QR scan) / delivery (pincode) fields, summary
+│           │           ├── orders_screen.dart         Paginated user order history list
+│           │           ├── order_detail_screen.dart   Status hero card, items, bill, track/pay/resend-invoice actions
+│           │           └── order_tracking_screen.dart Timeline with 20 s auto-refresh, ETA card, rider card
+│           │
+│           ├── payments/
+│           │   ├── data/
+│           │   │   └── payments_repository.dart       verifyPayment (mock Razorpay), sendInvoice
+│           │   └── presentation/
+│           │       ├── providers/
+│           │       │   └── payments_provider.dart     PaymentNotifier + InvoiceNotifier (both sealed state)
+│           │       └── screens/
+│           │           └── payment_screen.dart        Amount hero, test-mode banner, mock method tiles, success screen
+│           │
+│           ├── profile/
+│           │   └── presentation/
+│           │       └── screens/
+│           │           └── profile_screen.dart        Avatar initials, account info card, nav shortcuts, logout confirmation sheet
+│           │
+│           ├── ai/
+│           │   ├── data/
+│           │   │   └── ai_repository.dart             getRecommendation, triageComplaint
+│           │   └── presentation/
+│           │       ├── providers/
+│           │       │   └── ai_provider.dart           AiChatNotifier (chat thread) + TriageNotifier (sealed state)
+│           │       └── screens/
+│           │           └── ai_chat_screen.dart        Chat UI — message bubbles, typing indicator, suggestion chips, input bar
+│           │
 │           └── admin/
-│               ├── dashboard_screen.dart
-│               ├── admin_orders_screen.dart
-│               ├── delivery_screen.dart
-│               ├── menu_management_screen.dart
-│               ├── tables_management_screen.dart
-│               ├── riders_screen.dart
-│               ├── analytics_screen.dart
-│               ├── complaints_admin_screen.dart
-│               └── admin_shell.dart     Responsive admin shell — sidebar (desktop) / bottom nav (mobile)
+│               ├── data/
+│               │   └── admin_repository.dart          All admin API calls — analytics, orders, menu, tables, riders, complaints, users
+│               ├── domain/
+│               │   └── models/
+│               │       ├── admin_order_model.dart     AdminOrderModel + AdminRiderInfo — needsRider, deliveryAddressLine helpers
+│               │       ├── analytics_model.dart       AnalyticsData, AnalyticsSummary, DailyBreakdown, TopItem, ComplaintsSummary
+│               │       ├── complaint_model.dart       ComplaintModel — priorityOrder helper for sorting
+│               │       └── restaurant_table_model.dart   RestaurantTableModel + RiderModel
+│               └── presentation/
+│                   ├── providers/
+│                   │   └── admin_providers.dart       AdminAnalyticsNotifier, AdminOrdersNotifier, AdminMenuNotifier,
+│                   │                                  AdminTablesNotifier, AdminRidersNotifier, AdminComplaintsNotifier
+│                   └── screens/
+│                       ├── admin_shell.dart           Responsive shell — sidebar (>= 720 px) / bottom nav + More sheet (< 720 px)
+│                       ├── dashboard_screen.dart      KPI tiles, quick action row, live active orders preview
+│                       ├── admin_orders_screen.dart   All orders, status + type filter chips, confirm dialog, per-card spinner
+│                       ├── delivery_screen.dart       Delivery-only orders, rider assignment picker, out-for-delivery action
+│                       ├── menu_management_screen.dart   Item list, availability toggle, image URL preview, create/edit sheet
+│                       ├── tables_management_screen.dart Status-coloured grid, create/edit sheet, QR regeneration
+│                       ├── riders_screen.dart         Rider list, active toggle, create/edit bottom sheet
+│                       ├── analytics_screen.dart      7 chart types — revenue trend, orders volume, peak hours, pie charts,
+│                       │                              status distribution, ogive, top items; IST bucketing throughout
+│                       └── complaints_admin_screen.dart   Status tabs, priority filter popup, quick-advance button, detail sheet
 │
-└── web/                                 Flutter Web production build
-    └── (compiled output — served as static site)
+└── web/                                 Flutter Web production build (compiled static output)
+    └── (flutter build web --release --base-href / output — deploy to any static host)
 ```
 
 ---
