@@ -89,6 +89,24 @@ def create_order():
         if not table_id:
             return error_response("table_id is required for dine-in orders", 400)
 
+        # ── Validate table exists in restaurant_tables ────────────────────────
+        table_result = db.table("restaurant_tables") \
+            .select("id, table_number, status") \
+            .eq("table_number", table_id) \
+            .execute()
+
+        if not table_result.data:
+            return error_response(
+                f"Table '{table_id}' does not exist. Please scan a valid QR code.", 400
+            )
+
+        table_row = table_result.data[0]
+        if table_row["status"] == "inactive":
+            return error_response(
+                f"Table '{table_id}' is currently inactive and cannot accept orders.", 400
+            )
+        # ─────────────────────────────────────────────────────────────────────
+
     elif order_type == "delivery":
         pincode = str(data.get("pincode", "")).strip()
         address_line = str(data.get("address_line", "")).strip()
@@ -239,16 +257,14 @@ def set_order_eta(order_id):
 
     payload = {}
 
-    # Accept either field — admin chooses which is relevant per order_type
     if "estimated_delivery_time" in data:
         val = data["estimated_delivery_time"]
-        payload["estimated_delivery_time"] = val  # ISO-8601 string or None
+        payload["estimated_delivery_time"] = val
 
     if "estimated_table_time" in data:
         val = data["estimated_table_time"]
-        payload["estimated_table_time"] = val  # ISO-8601 string or None
+        payload["estimated_table_time"] = val
 
-    # Also accept a convenience key "eta_minutes" for quick relative ETA
     eta_minutes = data.get("eta_minutes")
     if eta_minutes is not None and not payload:
         try:
@@ -257,7 +273,6 @@ def set_order_eta(order_id):
                 raise ValueError
             from datetime import datetime, timedelta, timezone
             eta_iso = (datetime.now(timezone.utc) + timedelta(minutes=mins)).isoformat()
-            # Set on both fields so whichever applies is populated
             payload["estimated_delivery_time"] = eta_iso
             payload["estimated_table_time"] = eta_iso
         except (ValueError, TypeError):
@@ -294,7 +309,6 @@ def assign_rider(order_id):
 
     db = get_db()
 
-    # Verify the order is a delivery order
     order_result = db.table("orders").select(
         "id, order_type, status"
     ).eq("id", order_id).execute()
@@ -306,7 +320,6 @@ def assign_rider(order_id):
     if order["order_type"] != "delivery":
         return error_response("Rider assignment is only valid for delivery orders", 400)
 
-    # Verify the rider exists and is active
     rider_result = db.table("riders").select(
         "id, name, phone"
     ).eq("id", rider_id).eq("is_active", True).execute()
