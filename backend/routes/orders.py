@@ -4,22 +4,24 @@ from middleware.auth_middleware import require_auth, require_admin
 from services.billing_service import calculate_bill
 from services.postal_service import lookup_pincode, build_delivery_address
 from utils.response import success_response, error_response
-from utils.validators import validate_required_fields, validate_pincode, validate_uuid
+from utils.validators import (
+    validate_required_fields, validate_pincode, validate_uuid
+)
 
 orders_bp = Blueprint("orders", __name__)
 
 VALID_STATUS_TRANSITIONS = {
-    "pending": {"confirmed", "cancelled"},
-    "confirmed": {"preparing", "cancelled"},
-    "preparing": {"ready"},
-    "ready": {"out_for_delivery", "delivered"},
+    "pending":          {"confirmed", "cancelled"},
+    "confirmed":        {"preparing", "cancelled"},
+    "preparing":        {"ready"},
+    "ready":            {"out_for_delivery", "delivered"},
     "out_for_delivery": {"delivered"},
-    "delivered": set(),
-    "cancelled": set()
+    "delivered":        set(),
+    "cancelled":        set()
 }
 
 
-# create order - handles both dine_in and delivery
+# ── Create order (dine_in or delivery) ───────────────────────────────────────
 @orders_bp.route("/", methods=["POST"])
 @require_auth
 def create_order():
@@ -42,7 +44,6 @@ def create_order():
     db = get_db()
     user = request.current_user
 
-    # resolve each item from menu_items to get live price + name
     resolved_items = []
     for entry in items_raw:
         menu_item_id = str(entry.get("menu_item_id", "")).strip()
@@ -58,7 +59,9 @@ def create_order():
         except (ValueError, TypeError):
             return error_response("Item quantity must be a positive integer", 400)
 
-        menu_result = db.table("menu_items").select("id, name, price, is_available").eq("id", menu_item_id).execute()
+        menu_result = db.table("menu_items").select(
+            "id, name, price, is_available"
+        ).eq("id", menu_item_id).execute()
 
         if not menu_result.data:
             return error_response(f"Menu item not found: {menu_item_id}", 404)
@@ -91,7 +94,9 @@ def create_order():
         address_line = str(data.get("address_line", "")).strip()
 
         if not validate_pincode(pincode):
-            return error_response("Invalid pincode. Must be a 6-digit Indian postal code.", 400)
+            return error_response(
+                "Invalid pincode. Must be a 6-digit Indian postal code.", 400
+            )
 
         if not address_line:
             return error_response("address_line is required for delivery orders", 400)
@@ -157,7 +162,7 @@ def create_order():
     )
 
 
-# get single order with items
+# ── Get single order with items ───────────────────────────────────────────────
 @orders_bp.route("/<order_id>", methods=["GET"])
 @require_auth
 def get_order(order_id):
@@ -185,7 +190,7 @@ def get_order(order_id):
     )
 
 
-# update order status - admin/staff only
+# ── Update order status (admin/staff) ─────────────────────────────────────────
 @orders_bp.route("/<order_id>/status", methods=["PATCH"])
 @require_admin
 def update_order_status(order_id):
@@ -221,7 +226,111 @@ def update_order_status(order_id):
     return success_response({"order": result.data[0]}, "Order status updated successfully", 200)
 
 
-# get orders for a specific user
+# ── Set estimated delivery / table time (admin/staff) ────────────────────────
+@orders_bp.route("/<order_id>/eta", methods=["PATCH"])
+@require_admin
+def set_order_eta(order_id):
+    if not validate_uuid(order_id):
+        return error_response("Invalid order ID format", 400)
+
+    data = request.get_json(silent=True)
+    if not data:
+        return error_response("Invalid JSON body", 400)
+
+    payload = {}
+
+    # Accept either field — admin chooses which is relevant per order_type
+    if "estimated_delivery_time" in data:
+        val = data["estimated_delivery_time"]
+        payload["estimated_delivery_time"] = val  # ISO-8601 string or None
+
+    if "estimated_table_time" in data:
+        val = data["estimated_table_time"]
+        payload["estimated_table_time"] = val  # ISO-8601 string or None
+
+    # Also accept a convenience key "eta_minutes" for quick relative ETA
+    eta_minutes = data.get("eta_minutes")
+    if eta_minutes is not None and not payload:
+        try:
+            mins = int(eta_minutes)
+            if mins < 1 or mins > 300:
+                raise ValueError
+            from datetime import datetime, timedelta, timezone
+            eta_iso = (datetime.now(timezone.utc) + timedelta(minutes=mins)).isoformat()
+            # Set on both fields so whichever applies is populated
+            payload["estimated_delivery_time"] = eta_iso
+            payload["estimated_table_time"] = eta_iso
+        except (ValueError, TypeError):
+            return error_response("eta_minutes must be an integer between 1 and 300", 400)
+
+    if not payload:
+        return error_response(
+            "Provide at least one of: estimated_delivery_time, estimated_table_time, eta_minutes",
+            400
+        )
+
+    db = get_db()
+    result = db.table("orders").update(payload).eq("id", order_id).execute()
+    if not result.data:
+        return error_response("Order not found", 404)
+
+    return success_response({"order": result.data[0]}, "ETA updated successfully", 200)
+
+
+# ── Assign rider to delivery order (admin/staff) ──────────────────────────────
+@orders_bp.route("/<order_id>/assign-rider", methods=["PATCH"])
+@require_admin
+def assign_rider(order_id):
+    if not validate_uuid(order_id):
+        return error_response("Invalid order ID format", 400)
+
+    data = request.get_json(silent=True)
+    if not data:
+        return error_response("Invalid JSON body", 400)
+
+    rider_id = str(data.get("rider_id", "")).strip()
+    if not rider_id or not validate_uuid(rider_id):
+        return error_response("Valid rider_id is required", 400)
+
+    db = get_db()
+
+    # Verify the order is a delivery order
+    order_result = db.table("orders").select(
+        "id, order_type, status"
+    ).eq("id", order_id).execute()
+
+    if not order_result.data:
+        return error_response("Order not found", 404)
+
+    order = order_result.data[0]
+    if order["order_type"] != "delivery":
+        return error_response("Rider assignment is only valid for delivery orders", 400)
+
+    # Verify the rider exists and is active
+    rider_result = db.table("riders").select(
+        "id, name, phone"
+    ).eq("id", rider_id).eq("is_active", True).execute()
+
+    if not rider_result.data:
+        return error_response("Active rider not found", 404)
+
+    rider = rider_result.data[0]
+
+    result = db.table("orders").update({"rider_id": rider_id}).eq("id", order_id).execute()
+    if not result.data:
+        return error_response("Failed to assign rider", 500)
+
+    return success_response(
+        {
+            "order": result.data[0],
+            "rider": rider
+        },
+        f"Rider '{rider['name']}' assigned successfully",
+        200
+    )
+
+
+# ── Get orders for a specific user ────────────────────────────────────────────
 @orders_bp.route("/user/<user_id>", methods=["GET"])
 @require_auth
 def get_user_orders(user_id):
@@ -234,7 +343,9 @@ def get_user_orders(user_id):
         return error_response("Access denied", 403)
 
     db = get_db()
-    result = db.table("orders").select("*").eq("user_id", user_id).order("created_at", desc=True).execute()
+    result = db.table("orders").select("*").eq("user_id", user_id).order(
+        "created_at", desc=True
+    ).execute()
 
     return success_response(
         {"orders": result.data or [], "count": len(result.data or [])},
