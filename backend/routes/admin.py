@@ -7,7 +7,7 @@ from utils.response import success_response, error_response
 admin_bp = Blueprint("admin", __name__)
 
 
-# main analytics dashboard
+# ── Main analytics dashboard ─────────────────────────────────────────────────
 @admin_bp.route("/analytics", methods=["GET"])
 @require_admin
 def get_analytics():
@@ -59,12 +59,14 @@ def get_analytics():
         reverse=True
     )
 
-    # top selling items - Pareto distribution sort
+    # top selling items (Pareto sort)
     order_ids = [o["id"] for o in paid_orders]
     top_items = []
 
     if order_ids:
-        items_result = db.table("order_items").select("item_name, quantity, item_total").in_("order_id", order_ids).execute()
+        items_result = db.table("order_items").select(
+            "item_name, quantity, item_total"
+        ).in_("order_id", order_ids).execute()
         all_items = items_result.data or []
 
         item_aggregates = defaultdict(lambda: {"quantity": 0, "revenue": 0.0})
@@ -105,18 +107,29 @@ def get_analytics():
     total_menu_items = len(menu_items)
     available_menu_items = sum(1 for m in menu_items if m["is_available"])
 
+    # active tables
+    tables_result = db.table("restaurant_tables").select("status").execute()
+    all_tables = tables_result.data or []
+    active_tables = sum(1 for t in all_tables if t["status"] == "occupied")
+
+    # pending orders count
+    pending_orders = sum(1 for o in all_orders if o["status"] == "pending")
+
     return success_response(
         {
             "summary": {
                 "total_orders": total_orders,
                 "paid_orders": len(paid_orders),
                 "cancelled_orders": len(cancelled_orders),
+                "pending_orders": pending_orders,
                 "dine_in_orders": dine_in_count,
                 "delivery_orders": delivery_count,
                 "total_revenue": round(total_revenue, 2),
                 "total_gst_collected": round(total_gst, 2),
                 "total_subtotal": round(total_subtotal, 2),
-                "average_order_value": round(total_revenue / len(paid_orders), 2) if paid_orders else 0.0
+                "average_order_value": round(total_revenue / len(paid_orders), 2) if paid_orders else 0.0,
+                "active_tables": active_tables,
+                "total_tables": len(all_tables)
             },
             "daily_breakdown": daily_breakdown,
             "top_selling_items": top_items,
@@ -136,7 +149,41 @@ def get_analytics():
     )
 
 
-# all complaints with filters
+# ── All orders with filters (admin live orders view) ─────────────────────────
+@admin_bp.route("/orders", methods=["GET"])
+@require_admin
+def get_admin_orders():
+    db = get_db()
+
+    status = request.args.get("status", "").strip()
+    order_type = request.args.get("type", "").strip()
+    try:
+        limit = int(request.args.get("limit", 100))
+        limit = max(1, min(limit, 500))
+    except (ValueError, TypeError):
+        limit = 100
+
+    # Join riders table to get rider name directly
+    query = db.table("orders").select(
+        "*, riders(id, name, phone)"
+    ).order("created_at", desc=True).limit(limit)
+
+    if status:
+        query = query.eq("status", status)
+    if order_type:
+        query = query.eq("order_type", order_type)
+
+    result = query.execute()
+    orders = result.data or []
+
+    return success_response(
+        {"orders": orders, "count": len(orders)},
+        "Orders fetched successfully",
+        200
+    )
+
+
+# ── All complaints with filters ───────────────────────────────────────────────
 @admin_bp.route("/complaints", methods=["GET"])
 @require_admin
 def get_complaints():
@@ -162,7 +209,7 @@ def get_complaints():
     )
 
 
-# update complaint status
+# ── Update complaint status ───────────────────────────────────────────────────
 @admin_bp.route("/complaints/<complaint_id>/status", methods=["PATCH"])
 @require_admin
 def update_complaint_status(complaint_id):
@@ -174,7 +221,9 @@ def update_complaint_status(complaint_id):
     valid_statuses = {"open", "in_review", "resolved", "closed"}
 
     if new_status not in valid_statuses:
-        return error_response(f"Invalid status. Must be one of: {', '.join(valid_statuses)}", 400)
+        return error_response(
+            f"Invalid status. Must be one of: {', '.join(valid_statuses)}", 400
+        )
 
     db = get_db()
     result = db.table("complaints").update({"status": new_status}).eq("id", complaint_id).execute()
@@ -185,11 +234,17 @@ def update_complaint_status(complaint_id):
     return success_response({"complaint": result.data[0]}, "Complaint status updated", 200)
 
 
-# all users list
+# ── All users list ────────────────────────────────────────────────────────────
 @admin_bp.route("/users", methods=["GET"])
 @require_admin
 def get_users():
     db = get_db()
-    result = db.table("users").select("id, name, email, phone, role, is_verified, created_at").order("created_at", desc=True).execute()
+    result = db.table("users").select(
+        "id, name, email, phone, role, is_verified, created_at"
+    ).order("created_at", desc=True).execute()
     users = result.data or []
-    return success_response({"users": users, "count": len(users)}, "Users fetched successfully", 200)
+    return success_response(
+        {"users": users, "count": len(users)},
+        "Users fetched successfully",
+        200
+    )
