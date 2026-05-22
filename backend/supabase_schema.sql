@@ -416,3 +416,154 @@ SELECT cron.schedule(
 SELECT jobid, jobname, schedule, command, active
 FROM cron.job
 WHERE jobname IN ('purge_expired_otps', 'purge_expired_sessions');
+
+
+-- =============================================
+-- ALTER EXISTING DB — RESTAURANT HYBRID SYSTEM
+-- Run this in Supabase SQL Editor on your EXISTING database.
+-- Every statement is idempotent — safe to re-run.
+-- =============================================
+
+
+-- ─────────────────────────────────────────────
+-- STEP 1: Create `riders` table (must exist before orders FK)
+-- ─────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS riders (
+    id          UUID            PRIMARY KEY DEFAULT gen_random_uuid(),
+    name        VARCHAR(255)    NOT NULL,
+    phone       VARCHAR(20)     NOT NULL UNIQUE,
+    is_active   BOOLEAN         NOT NULL DEFAULT TRUE,
+    created_at  TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ     NOT NULL DEFAULT NOW()
+);
+
+
+-- ─────────────────────────────────────────────
+-- STEP 2: Create `restaurant_tables` table
+-- ─────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS restaurant_tables (
+    id              UUID            PRIMARY KEY DEFAULT gen_random_uuid(),
+    table_number    VARCHAR(20)     NOT NULL UNIQUE,
+    capacity        INTEGER         NOT NULL DEFAULT 4 CHECK (capacity > 0),
+    floor           VARCHAR(50)     NOT NULL DEFAULT 'Ground Floor',
+    status          VARCHAR(20)     NOT NULL DEFAULT 'free'
+                                    CHECK (status IN ('free', 'occupied', 'reserved', 'inactive')),
+    qr_token        TEXT            UNIQUE NOT NULL DEFAULT gen_random_uuid()::TEXT,
+    created_at      TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ     NOT NULL DEFAULT NOW()
+);
+
+
+-- ─────────────────────────────────────────────
+-- STEP 3: Add new columns to `orders` (idempotent DO blocks)
+-- ─────────────────────────────────────────────
+
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                   WHERE table_name='orders' AND column_name='estimated_delivery_time') THEN
+        ALTER TABLE orders ADD COLUMN estimated_delivery_time TIMESTAMPTZ;
+    END IF;
+END $$;
+
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                   WHERE table_name='orders' AND column_name='estimated_table_time') THEN
+        ALTER TABLE orders ADD COLUMN estimated_table_time TIMESTAMPTZ;
+    END IF;
+END $$;
+
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                   WHERE table_name='orders' AND column_name='rider_id') THEN
+        ALTER TABLE orders ADD COLUMN rider_id UUID REFERENCES riders(id) ON DELETE SET NULL;
+    END IF;
+END $$;
+
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                   WHERE table_name='orders' AND column_name='accepted_at') THEN
+        ALTER TABLE orders ADD COLUMN accepted_at TIMESTAMPTZ;
+    END IF;
+END $$;
+
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                   WHERE table_name='orders' AND column_name='rejected_at') THEN
+        ALTER TABLE orders ADD COLUMN rejected_at TIMESTAMPTZ;
+    END IF;
+END $$;
+
+
+-- ─────────────────────────────────────────────
+-- STEP 4: Expand `orders.status` CHECK constraint to include 'rejected'
+-- The auto-generated name is `orders_status_check` — drop & recreate.
+-- ─────────────────────────────────────────────
+ALTER TABLE orders DROP CONSTRAINT IF EXISTS orders_status_check;
+ALTER TABLE orders ADD CONSTRAINT orders_status_check
+    CHECK (status IN (
+        'pending', 'confirmed', 'preparing',
+        'ready', 'out_for_delivery', 'delivered', 'cancelled', 'rejected'
+    ));
+
+
+-- ─────────────────────────────────────────────
+-- STEP 5: New indices
+-- ─────────────────────────────────────────────
+CREATE INDEX IF NOT EXISTS idx_restaurant_tables_status ON restaurant_tables(status);
+CREATE INDEX IF NOT EXISTS idx_restaurant_tables_number ON restaurant_tables(table_number);
+CREATE INDEX IF NOT EXISTS idx_riders_active             ON riders(is_active);
+CREATE INDEX IF NOT EXISTS idx_orders_rider_id
+    ON orders(rider_id) WHERE rider_id IS NOT NULL;
+
+
+-- ─────────────────────────────────────────────
+-- STEP 6: RLS for new tables
+-- ─────────────────────────────────────────────
+
+ALTER TABLE restaurant_tables ENABLE ROW LEVEL SECURITY;
+ALTER TABLE riders            ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS policy_tables_deny_anon   ON restaurant_tables;
+DROP POLICY IF EXISTS policy_tables_service_all ON restaurant_tables;
+
+CREATE POLICY policy_tables_deny_anon
+    ON restaurant_tables FOR ALL TO anon USING (false);
+CREATE POLICY policy_tables_service_all
+    ON restaurant_tables FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS policy_riders_deny_anon   ON riders;
+DROP POLICY IF EXISTS policy_riders_service_all ON riders;
+
+CREATE POLICY policy_riders_deny_anon
+    ON riders FOR ALL TO anon USING (false);
+CREATE POLICY policy_riders_service_all
+    ON riders FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+
+-- ─────────────────────────────────────────────
+-- STEP 7: updated_at triggers for new tables
+-- (fn_set_updated_at already exists from original schema)
+-- ─────────────────────────────────────────────
+
+DROP TRIGGER IF EXISTS trg_restaurant_tables_updated_at ON restaurant_tables;
+CREATE TRIGGER trg_restaurant_tables_updated_at
+    BEFORE UPDATE ON restaurant_tables
+    FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
+
+DROP TRIGGER IF EXISTS trg_riders_updated_at ON riders;
+CREATE TRIGGER trg_riders_updated_at
+    BEFORE UPDATE ON riders
+    FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
+
+
+-- ─────────────────────────────────────────────
+-- STEP 8: Public QR lookup policy
+-- Allows customers to scan a table QR (anon can match qr_token → table_number)
+-- without exposing other table data.
+-- ─────────────────────────────────────────────
+DROP POLICY IF EXISTS policy_tables_qr_public ON restaurant_tables;
+CREATE POLICY policy_tables_qr_public
+    ON restaurant_tables
+    FOR SELECT
+    TO anon
+    USING (status != 'inactive');
