@@ -16,6 +16,14 @@ A production-grade hybrid restaurant ordering system built with Python Flask, Su
 | GitHub Repository | `https://github.com/bitgamergws1/Restaurant-Hybrid-System` |
 
 ---
+##Architecture
+<img width="100" height="150" alt="image" src="https://github.com/user-attachments/assets/a3ef4a09-fc11-4235-9a73-0faef2b51cbe" />
+---
+##Architecture In detail
+<img width="2880" height="2454" alt="restaurant_hybrid_detailed_architecture" src="https://github.com/user-attachments/assets/f7cf5c0e-7f21-4137-81e8-a03b2171ad50" />
+
+---
+
 
 ## Repository Structure
 
