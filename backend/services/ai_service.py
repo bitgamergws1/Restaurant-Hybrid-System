@@ -163,21 +163,191 @@ def _call_proxy(model: str, prompt: str, system: str = None, timeout: int = 35) 
     return None
 
 
+# ── FIX: smart keyword-based menu selection ──────────────────────────────────
+# Problem was menu_context[:50] — only first 50 items by sort_order were sent,
+# so most of the 700-item menu was invisible to the AI.
+# Now we score items by keyword relevance to the user prompt and send the top
+# 60 matches (up to 40 relevant + 20 popular fallbacks), covering the whole menu.
+
+_STOP_WORDS = {
+    "i", "want", "need", "give", "me", "please", "something", "a", "an",
+    "the", "what", "is", "are", "price", "prices", "how", "much", "cost",
+    "any", "some", "can", "you", "have", "do", "your", "my", "and", "or",
+    "for", "with", "without", "not", "but", "so", "its", "it", "on",
+    "new", "dish", "food", "item", "recommend", "suggest", "show",
+}
+
+_CATEGORY_ALIASES: dict[str, list[str]] = {
+    "burger":      ["Burgers"],
+    "burgers":     ["Burgers"],
+    "pizza":       ["Pizza"],
+    "biryani":     ["Rice & Biryani"],
+    "rice":        ["Rice & Biryani"],
+    "noodles":     ["Chinese", "Pasta"],
+    "pasta":       ["Pasta"],
+    "chinese":     ["Chinese"],
+    "south":       ["South Indian"],
+    "dosa":        ["South Indian"],
+    "idli":        ["South Indian"],
+    "starter":     ["Starters"],
+    "starters":    ["Starters"],
+    "soup":        ["Soups"],
+    "salad":       ["Salads"],
+    "bread":       ["Breads"],
+    "roti":        ["Breads"],
+    "naan":        ["Breads"],
+    "dal":         ["Dal & Lentils"],
+    "lentil":      ["Dal & Lentils"],
+    "paneer":      ["Paneer"],
+    "veg":         ["Veg Main Course", "Paneer", "Dal & Lentils"],
+    "vegetarian":  ["Veg Main Course", "Paneer", "Dal & Lentils"],
+    "nonveg":      ["Non-Veg Curries", "Tandoori & Grill", "Seafood"],
+    "nonvegetarian": ["Non-Veg Curries", "Tandoori & Grill"],
+    "chicken":     ["Non-Veg Curries", "Starters", "Chinese"],
+    "mutton":      ["Non-Veg Curries", "Mughlai"],
+    "fish":        ["Seafood", "Non-Veg Curries"],
+    "prawn":       ["Seafood", "Non-Veg Curries"],
+    "seafood":     ["Seafood"],
+    "sweet":       ["Desserts", "Ice Cream"],
+    "dessert":     ["Desserts"],
+    "icecream":    ["Ice Cream"],
+    "drink":       ["Beverages", "Juices & Shakes"],
+    "juice":       ["Juices & Shakes"],
+    "coffee":      ["Beverages"],
+    "tea":         ["Beverages"],
+    "shake":       ["Juices & Shakes"],
+    "lassi":       ["Beverages", "Juices & Shakes"],
+    "thali":       ["Thalis"],
+    "streetfood":  ["Street Food"],
+    "chaat":       ["Street Food"],
+    "mughlai":     ["Mughlai"],
+    "tandoor":     ["Tandoori & Grill"],
+    "grill":       ["Tandoori & Grill"],
+    "continental": ["Continental"],
+    "breakfast":   ["Breakfast"],
+    "fast":        ["Fast Food"],
+    "fastfood":    ["Fast Food"],
+}
+
+
+def _select_menu_items(user_prompt: str, menu_context: list, max_relevant: int = 40, max_total: int = 60) -> list:
+    """
+    Score every item against the user prompt and return the most relevant ones.
+    Falls back to a spread of popular items when nothing matches well.
+    """
+    prompt_lower = user_prompt.lower()
+
+    # tokenise — remove stop words
+    raw_tokens = re.findall(r"[a-z]+", prompt_lower)
+    tokens = [t for t in raw_tokens if t not in _STOP_WORDS and len(t) > 2]
+
+    # resolve category hints from aliases
+    hinted_categories: set[str] = set()
+    for token in raw_tokens:
+        for cats in _CATEGORY_ALIASES.get(token, []):
+            hinted_categories.add(cats)
+
+    scored: list[tuple[int, dict]] = []
+    for item in menu_context:
+        score = 0
+        name_lower   = item.get("name", "").lower()
+        desc_lower   = (item.get("description") or "").lower()
+        cat_lower    = item.get("category", "").lower()
+        subcat_lower = (item.get("subcategory") or "").lower()
+        tags         = [t.lower() for t in (item.get("tags") or [])]
+        tags_str     = " ".join(tags)
+
+        # exact category hint (strong signal)
+        if item.get("category") in hinted_categories:
+            score += 6
+
+        for token in tokens:
+            if token in name_lower:
+                score += 5          # name match is most valuable
+            if token in tags_str:
+                score += 3
+            if token in cat_lower or token in subcat_lower:
+                score += 2
+            if token in desc_lower:
+                score += 1
+
+        # spicy / mild / light hints via tags
+        for mood_token in raw_tokens:
+            if mood_token in ("spicy", "hot") and "spicy" in tags_str:
+                score += 2
+            if mood_token in ("mild", "light", "healthy") and any(
+                t in tags_str for t in ("mild", "light", "healthy")
+            ):
+                score += 2
+            if mood_token in ("crispy", "fried") and any(
+                t in tags_str for t in ("crispy", "fried")
+            ):
+                score += 2
+            if mood_token in ("creamy", "rich") and any(
+                t in tags_str for t in ("creamy", "rich")
+            ):
+                score += 2
+
+        scored.append((score, item))
+
+    # sort by score descending
+    scored.sort(key=lambda x: x[0], reverse=True)
+
+    relevant   = [item for score, item in scored if score > 0][:max_relevant]
+    fallback   = [item for score, item in scored if score == 0]
+
+    # pick a diverse fallback spread across categories when we need padding
+    if len(relevant) < max_total:
+        seen_cats: set[str] = {item.get("category") for item in relevant}
+        diverse_fallback: list[dict] = []
+        for item in fallback:
+            if len(relevant) + len(diverse_fallback) >= max_total:
+                break
+            cat = item.get("category")
+            if cat not in seen_cats:
+                diverse_fallback.append(item)
+                seen_cats.add(cat)
+
+        # if still need more, just append
+        remaining_slots = max_total - len(relevant) - len(diverse_fallback)
+        extra = [
+            item for item in fallback
+            if item not in diverse_fallback
+        ][:remaining_slots]
+
+        return relevant + diverse_fallback + extra
+
+    return relevant[:max_total]
+
+
 def get_ai_recommendation(user_prompt: str, menu_context: list) -> dict:
+    # ── FIX: use smart selection instead of naive [:50] ──
+    selected_items = _select_menu_items(user_prompt, menu_context)
+
     menu_lines = "\n".join(
-        f"- {item['name']} | {item['category']} | Rs. {item['price']}"
+        f"- {item['name']} ({item['category']}) — Rs. {item['price']}"
         + (f" | {item['description']}" if item.get("description") else "")
-        for item in menu_context[:50]
+        for item in selected_items
     )
 
+    # ── FIX: stronger system prompt to prevent model from breaking character ──
     system = (
-        f"You are a friendly AI waiter at {Config.RESTAURANT_NAME}, an Indian restaurant. "
-        "Suggest food items from the menu below based on the customer's preference. "
-        "Keep the tone warm, conversational, and concise. "
-        "Recommend 3 to 4 items with a one-line reason for each. "
-        "Never invent items or prices. Only recommend items present in the menu list. "
-        "Do not add section headers or bullet formatting — write naturally.\n\n"
-        f"Menu:\n{menu_lines}"
+        f"You are the AI Waiter at {Config.RESTAURANT_NAME}, an Indian multi-cuisine restaurant. "
+        f"Your ONLY job is to help customers choose dishes from the {Config.RESTAURANT_NAME} menu listed below. "
+        "STRICT RULES you must NEVER break:\n"
+        "1. You are the AI Waiter of this restaurant — never say you are any other AI, product, or company.\n"
+        "2. Only recommend items that exist in the menu list below. Never invent dishes or prices.\n"
+        "3. Always answer in the context of this restaurant's menu. If the customer asks about prices, "
+        "give the exact price from the menu list.\n"
+        "4. Recommend 3–4 dishes that match the customer's mood or request, with one warm reason each.\n"
+        "5. Keep tone warm, helpful, and conversational — like a friendly human waiter.\n"
+        "6. Do not use bullet headers, bold markdown, or numbered lists — write naturally in flowing sentences.\n"
+        "7. If the customer asks something completely unrelated to food or the restaurant, "
+        f"gently steer them back: 'I'm your waiter at {Config.RESTAURANT_NAME} — let me help you pick "
+        "something delicious from our menu!'\n\n"
+        f"--- {Config.RESTAURANT_NAME} MENU (today's selection) ---\n"
+        f"{menu_lines}\n"
+        "--- END OF MENU ---"
     )
 
     result = _call_proxy(DEEPSHI_R1, user_prompt, system=system, timeout=TIMEOUT_R1)
@@ -240,9 +410,9 @@ def triage_complaint(raw_text: str) -> dict:
         valid_sentiments = {"positive", "neutral", "negative", "very_negative"}
         valid_priorities = {"low", "medium", "high", "critical"}
 
-        category = str(parsed.get("category", "")).strip()
+        category  = str(parsed.get("category", "")).strip()
         sentiment = str(parsed.get("sentiment", "")).strip()
-        priority = str(parsed.get("priority", "")).strip()
+        priority  = str(parsed.get("priority", "")).strip()
 
         if category not in valid_categories:
             raise ValueError(f"Invalid category: {category}")
