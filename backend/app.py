@@ -9,6 +9,8 @@ from routes.payments import payments_bp
 from routes.ai import ai_bp
 from routes.admin import admin_bp
 from routes.postal import postal_bp
+from routes.tables import tables_bp
+from routes.riders import riders_bp
 
 
 def create_app():
@@ -25,13 +27,15 @@ def create_app():
 
     init_supabase()
 
-    app.register_blueprint(auth_bp, url_prefix="/api/v1/auth")
-    app.register_blueprint(menu_bp, url_prefix="/api/v1/menu")
-    app.register_blueprint(orders_bp, url_prefix="/api/v1/orders")
+    app.register_blueprint(auth_bp,    url_prefix="/api/v1/auth")
+    app.register_blueprint(menu_bp,    url_prefix="/api/v1/menu")
+    app.register_blueprint(orders_bp,  url_prefix="/api/v1/orders")
     app.register_blueprint(payments_bp, url_prefix="/api/v1/payments")
-    app.register_blueprint(ai_bp, url_prefix="/api/v1/ai")
-    app.register_blueprint(admin_bp, url_prefix="/api/v1/admin")
-    app.register_blueprint(postal_bp, url_prefix="/api/v1/postal")
+    app.register_blueprint(ai_bp,      url_prefix="/api/v1/ai")
+    app.register_blueprint(admin_bp,   url_prefix="/api/v1/admin")
+    app.register_blueprint(postal_bp,  url_prefix="/api/v1/postal")
+    app.register_blueprint(tables_bp,  url_prefix="/api/v1/tables")
+    app.register_blueprint(riders_bp,  url_prefix="/api/v1/riders")
 
     @app.errorhandler(404)
     def not_found(e):
