@@ -43,7 +43,7 @@ After login, `app_router.dart` reads the `role` field from the session response.
 ## Architecture in Detail
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/f7cf5c0e-7f21-4137-81e8-a03b2171ad50" width="900"/>
+  <img src="restaurant_hybrid_detailed_architecture.svg" width="900"/>
 </p>
 
 ---
