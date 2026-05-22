@@ -28,14 +28,22 @@ def recommend():
         return error_response("Prompt must be under 1000 characters", 400)
 
     db = get_db()
+
+    # ── FIX #1: Added subcategory + tags (were missing before).
+    # _select_menu_items() uses both for relevance scoring — without them
+    # every item scored 0 and the AI got a random 60-item dump instead of
+    # the items actually relevant to the customer's request.
     menu_result = db.table("menu_items").select(
-        "name, category, price, description"
+        "name, category, subcategory, price, description, tags"
     ).eq("is_available", True).order("sort_order").execute()
 
     menu_context = menu_result.data or []
 
     if not menu_context:
+        print("[ai/recommend] WARNING: menu_context is empty — check Supabase connection and is_available flags")
         return error_response("Menu is currently empty. Cannot generate recommendations.", 400)
+
+    print(f"[ai/recommend] Fetched {len(menu_context)} menu items for AI context")
 
     result = get_ai_recommendation(prompt, menu_context)
 
