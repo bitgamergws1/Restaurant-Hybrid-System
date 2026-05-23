@@ -5,9 +5,30 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import '../../../../core/constants/app_colors.dart';
+import '../../../../core/network/api_client.dart';
+import '../../../../core/network/api_endpoints.dart';
+import '../../../../core/providers/shared_preferences_provider.dart';
 import '../../../../core/router/route_names.dart';
+import '../../../admin/domain/models/restaurant_table_model.dart';
 import '../../../cart/presentation/providers/cart_provider.dart';
 import '../providers/orders_provider.dart';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Provider: fetches available tables for customers (non-inactive only).
+// Uses the /tables/available endpoint which is auth-protected.
+// ─────────────────────────────────────────────────────────────────────────────
+
+final availableTablesProvider =
+    FutureProvider.autoDispose<List<RestaurantTableModel>>((ref) async {
+  final client = ref.read(apiClientProvider);
+  final data = await client.get(ApiEndpoints.availableTables);
+  final list = data['tables'] as List<dynamic>? ?? [];
+  return list
+      .map((e) => RestaurantTableModel.fromJson(e as Map<String, dynamic>))
+      .toList();
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 class CheckoutScreen extends ConsumerStatefulWidget {
   const CheckoutScreen({super.key});
@@ -19,8 +40,8 @@ class CheckoutScreen extends ConsumerStatefulWidget {
 class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   String _orderType = 'dine_in';
 
-  // Dine-in
-  final _tableCtrl = TextEditingController();
+  // Dine-in — selected from dropdown OR filled by QR scan
+  RestaurantTableModel? _selectedTable;
 
   // Delivery
   final _pincodeCtrl = TextEditingController();
@@ -32,7 +53,6 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
 
   @override
   void dispose() {
-    _tableCtrl.dispose();
     _pincodeCtrl.dispose();
     _addressCtrl.dispose();
     _notesCtrl.dispose();
@@ -48,6 +68,12 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       return;
     }
 
+    // Validate dine-in table selection
+    if (_orderType == 'dine_in' && _selectedTable == null) {
+      _showSnack('Please select a table first', AppColors.error);
+      return;
+    }
+
     final items = cartItems
         .map((c) => {
               'menu_item_id': c.menuItemId,
@@ -58,7 +84,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     await ref.read(createOrderProvider.notifier).placeOrder(
           orderType: _orderType,
           items: items,
-          tableId: _orderType == 'dine_in' ? _tableCtrl.text.trim() : null,
+          tableId: _orderType == 'dine_in' ? _selectedTable?.tableNumber : null,
           pincode: _orderType == 'delivery' ? _pincodeCtrl.text.trim() : null,
           addressLine:
               _orderType == 'delivery' ? _addressCtrl.text.trim() : null,
@@ -66,7 +92,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
         );
   }
 
-  /// Launches the QR scanner sheet and populates the table number field.
+  /// Launches the QR scanner sheet and matches scanned table against server list.
   Future<void> _scanTableQr() async {
     final result = await showModalBottomSheet<String>(
       context: context,
@@ -78,27 +104,46 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       builder: (_) => const _QrScannerSheet(),
     );
 
-    if (result != null && result.isNotEmpty && mounted) {
-      // QR encodes either a plain table_number string or a JSON payload.
-      // Try to parse JSON first; fall back to treating the raw string as the
-      // table number (e.g. "T5", "7").
-      String tableNumber = result.trim();
-      try {
-        // JSON format: {"table_number":"T5"} or {"table":"T5","token":"uuid"}
-        final decoded = _tryParseTableJson(result);
-        if (decoded != null) tableNumber = decoded;
-      } catch (_) {
-        // Not JSON — use raw string
-      }
+    if (result == null || result.isEmpty || !mounted) return;
 
-      _tableCtrl.text = tableNumber;
-      _showSnack('Table $tableNumber scanned successfully!', AppColors.success);
+    // Parse the QR — may be JSON {"table_number":"T-01","token":"uuid"}
+    // or a plain table number string.
+    String tableNumber = result.trim();
+    try {
+      final decoded = _tryParseTableJson(result);
+      if (decoded != null) tableNumber = decoded;
+    } catch (_) {}
+
+    // Try to match against available tables
+    final tables = ref.read(availableTablesProvider).valueOrNull ?? [];
+    final match = tables.cast<RestaurantTableModel?>().firstWhere(
+          (t) => t?.tableNumber.toLowerCase() == tableNumber.toLowerCase(),
+          orElse: () => null,
+        );
+
+    if (match != null) {
+      setState(() => _selectedTable = match);
+      _showSnack('Table ${match.tableNumber} selected ✓', AppColors.success);
+    } else {
+      // Table from QR not in server list — still accept it as a string
+      setState(() {
+        // Create a minimal placeholder so validation passes
+        _selectedTable = RestaurantTableModel(
+          id: '',
+          tableNumber: tableNumber,
+          capacity: 0,
+          floor: '',
+          status: 'free',
+          qrToken: '',
+          createdAt: DateTime.now(),
+        );
+      });
+      _showSnack('Table $tableNumber scanned', AppColors.success);
     }
   }
 
   String? _tryParseTableJson(String raw) {
     if (!raw.startsWith('{')) return null;
-    // Very lightweight parse — avoids importing dart:convert just for this.
     final tableMatch =
         RegExp(r'"table(?:_number)?"\s*:\s*"([^"]+)"').firstMatch(raw);
     return tableMatch?.group(1);
@@ -125,7 +170,6 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       if (next is CreateOrderSuccess) {
         ref.read(cartProvider.notifier).clear();
         if (_orderType == 'dine_in') {
-          // Dine-in: pay later at counter — go to order detail, skip payment
           _showSnack('Order placed! Pay at the counter when done 🍽️',
               AppColors.success);
           context.goNamed(
@@ -133,7 +177,6 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
             pathParameters: {'id': next.order.id},
           );
         } else {
-          // Delivery: proceed to online payment
           _showSnack('Order placed successfully!', AppColors.success);
           context.goNamed(
             RouteNames.payment,
@@ -210,8 +253,10 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
 
                     // ── Type-specific fields ──────────────────────────────
                     if (_orderType == 'dine_in')
-                      _DineInFields(
-                        tableCtrl: _tableCtrl,
+                      _DineInSection(
+                        selectedTable: _selectedTable,
+                        onTableSelected: (t) =>
+                            setState(() => _selectedTable = t),
                         onScanQr: _scanTableQr,
                       ).animate().fadeIn().slideX(begin: -0.04)
                     else
@@ -278,7 +323,6 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                       child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            // Items
                             ...cartItems.map((c) => Padding(
                                   padding:
                                       const EdgeInsets.symmetric(vertical: 4),
@@ -386,6 +430,294 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// _DineInSection — shows available tables as a tappable grid + QR scan option
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _DineInSection extends ConsumerWidget {
+  const _DineInSection({
+    required this.selectedTable,
+    required this.onTableSelected,
+    required this.onScanQr,
+  });
+
+  final RestaurantTableModel? selectedTable;
+  final void Function(RestaurantTableModel) onTableSelected;
+  final VoidCallback onScanQr;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tablesAsync = ref.watch(availableTablesProvider);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Header row
+        Row(children: [
+          Text('Select Your Table',
+              style: GoogleFonts.syne(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textMuted,
+                  letterSpacing: 0.5)),
+          const Spacer(),
+          // QR scan button
+          GestureDetector(
+            onTap: onScanQr,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: AppColors.primaryTint,
+                borderRadius: BorderRadius.circular(8),
+                border:
+                    Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
+              ),
+              child: Row(children: [
+                const Icon(Icons.qr_code_scanner_rounded,
+                    size: 14, color: AppColors.primary),
+                const SizedBox(width: 5),
+                Text('Scan QR',
+                    style: GoogleFonts.dmSans(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.primary)),
+              ]),
+            ),
+          ),
+        ]),
+
+        const SizedBox(height: 12),
+
+        // Selected table badge (if any)
+        if (selectedTable != null) ...[
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  AppColors.primary.withValues(alpha: 0.15),
+                  AppColors.primaryLight.withValues(alpha: 0.08),
+                ],
+              ),
+              borderRadius: BorderRadius.circular(12),
+              border:
+                  Border.all(color: AppColors.primary.withValues(alpha: 0.4)),
+            ),
+            child: Row(children: [
+              const Icon(Icons.table_restaurant_rounded,
+                  size: 18, color: AppColors.primary),
+              const SizedBox(width: 10),
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(
+                  selectedTable!.tableNumber,
+                  style: GoogleFonts.syne(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.textPrimary),
+                ),
+                if (selectedTable!.capacity > 0)
+                  Text(
+                    '${selectedTable!.capacity} seats · ${selectedTable!.floor}',
+                    style: GoogleFonts.dmSans(
+                        fontSize: 11, color: AppColors.textMuted),
+                  ),
+              ]),
+              const Spacer(),
+              GestureDetector(
+                onTap: () {
+                  // Trigger rebuild by passing null — parent handles this
+                  // We can't set null directly here; user must pick another table
+                },
+                child: const Icon(Icons.check_circle_rounded,
+                    color: AppColors.primary, size: 20),
+              ),
+            ]),
+          ),
+          const SizedBox(height: 12),
+        ],
+
+        // Table grid / loading / error
+        tablesAsync.when(
+          loading: () => Container(
+            height: 80,
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppColors.border),
+            ),
+            child: const Center(
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                    color: AppColors.primary, strokeWidth: 2),
+              ),
+            ),
+          ),
+          error: (_, __) => Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppColors.border),
+            ),
+            child: Row(children: [
+              const Icon(Icons.wifi_off_rounded,
+                  color: AppColors.textMuted, size: 18),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text('Could not load tables. Use Scan QR instead.',
+                    style: GoogleFonts.dmSans(
+                        color: AppColors.textMuted, fontSize: 12)),
+              ),
+              TextButton(
+                onPressed: () => ref.refresh(availableTablesProvider),
+                child: Text('Retry',
+                    style: GoogleFonts.dmSans(color: AppColors.primary)),
+              ),
+            ]),
+          ),
+          data: (tables) {
+            final free = tables
+                .where((t) => t.status == 'free' || t.status == 'reserved')
+                .toList();
+            final all = tables;
+
+            if (all.isEmpty) {
+              return Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppColors.border),
+                ),
+                child: Text('No tables available right now.',
+                    style: GoogleFonts.dmSans(color: AppColors.textMuted)),
+              );
+            }
+
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (free.isNotEmpty) ...[
+                  Text(
+                    'Available Tables (${free.length})',
+                    style: GoogleFonts.dmSans(
+                        fontSize: 11,
+                        color: AppColors.textMuted,
+                        fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 8),
+                ],
+
+                // Horizontal scrollable chip row
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: all.map((t) {
+                      final isSelected =
+                          selectedTable?.tableNumber == t.tableNumber;
+                      final statusColor = switch (t.status) {
+                        'free' => AppColors.success,
+                        'occupied' => AppColors.error,
+                        'reserved' => AppColors.warning,
+                        _ => AppColors.textMuted,
+                      };
+                      final canSelect =
+                          t.status == 'free' || t.status == 'reserved';
+
+                      return GestureDetector(
+                        onTap: canSelect ? () => onTableSelected(t) : null,
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 180),
+                          margin: const EdgeInsets.only(right: 8),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 14, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: isSelected
+                                ? AppColors.primaryTint
+                                : canSelect
+                                    ? AppColors.surface
+                                    : AppColors.surfaceAlt
+                                        .withValues(alpha: 0.5),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: isSelected
+                                  ? AppColors.primary
+                                  : statusColor.withValues(alpha: 0.4),
+                              width: isSelected ? 1.5 : 1,
+                            ),
+                          ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Row(mainAxisSize: MainAxisSize.min, children: [
+                                Container(
+                                  width: 6,
+                                  height: 6,
+                                  decoration: BoxDecoration(
+                                      color: statusColor,
+                                      shape: BoxShape.circle),
+                                ),
+                                const SizedBox(width: 6),
+                                Text(
+                                  t.tableNumber,
+                                  style: GoogleFonts.syne(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w800,
+                                    color: isSelected
+                                        ? AppColors.primary
+                                        : canSelect
+                                            ? AppColors.textPrimary
+                                            : AppColors.textDisabled,
+                                  ),
+                                ),
+                              ]),
+                              const SizedBox(height: 2),
+                              Text(
+                                '${t.capacity} seats',
+                                style: GoogleFonts.dmSans(
+                                    fontSize: 9,
+                                    color: isSelected
+                                        ? AppColors.primary
+                                        : AppColors.textMuted),
+                              ),
+                              if (!canSelect)
+                                Text(
+                                  t.status,
+                                  style: GoogleFonts.dmSans(
+                                      fontSize: 8,
+                                      color: statusColor,
+                                      fontWeight: FontWeight.w600),
+                                ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ),
+
+                const SizedBox(height: 8),
+                Row(children: [
+                  const Icon(Icons.info_outline_rounded,
+                      size: 12, color: AppColors.textDisabled),
+                  const SizedBox(width: 5),
+                  Text(
+                    'Greyed tables are occupied. Scan QR for instant selection.',
+                    style: GoogleFonts.dmSans(
+                        fontSize: 10, color: AppColors.textDisabled),
+                  ),
+                ]),
+              ],
+            );
+          },
+        ),
+      ],
+    );
+  }
+}
+
 // ── QR Scanner bottom sheet ───────────────────────────────────────────────────
 
 class _QrScannerSheet extends StatefulWidget {
@@ -409,7 +741,6 @@ class _QrScannerSheetState extends State<_QrScannerSheet> {
   Widget build(BuildContext context) => SizedBox(
         height: MediaQuery.sizeOf(context).height * 0.7,
         child: Column(children: [
-          // Handle + title
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
             child: Column(children: [
@@ -441,8 +772,6 @@ class _QrScannerSheetState extends State<_QrScannerSheet> {
                       GoogleFonts.dmSans(fontSize: 12, color: Colors.white38)),
             ]),
           ),
-
-          // Camera view
           Expanded(
             child: Stack(children: [
               ClipRRect(
@@ -461,8 +790,6 @@ class _QrScannerSheetState extends State<_QrScannerSheet> {
                   },
                 ),
               ),
-
-              // Scan overlay frame
               Center(
                 child: Container(
                   width: 220,
@@ -472,7 +799,6 @@ class _QrScannerSheetState extends State<_QrScannerSheet> {
                     borderRadius: BorderRadius.circular(16),
                   ),
                   child: Stack(children: [
-                    // Corner accents
                     for (final a in [
                       Alignment.topLeft,
                       Alignment.topRight,
@@ -513,8 +839,6 @@ class _QrScannerSheetState extends State<_QrScannerSheet> {
                   ]),
                 ),
               ),
-
-              // Torch toggle
               Positioned(
                 bottom: 20,
                 right: 20,
@@ -576,81 +900,6 @@ class _TypeCard extends StatelessWidget {
             ]),
           ),
         ),
-      );
-}
-
-class _DineInFields extends StatelessWidget {
-  const _DineInFields({
-    required this.tableCtrl,
-    required this.onScanQr,
-  });
-  final TextEditingController tableCtrl;
-  final VoidCallback onScanQr;
-
-  @override
-  Widget build(BuildContext context) => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(children: [
-            Text('Table Number',
-                style: GoogleFonts.syne(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textMuted,
-                    letterSpacing: 0.5)),
-            const Spacer(),
-            // QR scan shortcut
-            GestureDetector(
-              onTap: onScanQr,
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                decoration: BoxDecoration(
-                  color: AppColors.primaryTint,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                      color: AppColors.primary.withValues(alpha: 0.3)),
-                ),
-                child: Row(children: [
-                  const Icon(Icons.qr_code_scanner_rounded,
-                      size: 14, color: AppColors.primary),
-                  const SizedBox(width: 5),
-                  Text('Scan QR',
-                      style: GoogleFonts.dmSans(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.primary)),
-                ]),
-              ),
-            ),
-          ]),
-          const SizedBox(height: 10),
-          TextFormField(
-            controller: tableCtrl,
-            keyboardType: TextInputType.text,
-            style:
-                GoogleFonts.dmSans(fontSize: 14, color: AppColors.textPrimary),
-            cursorColor: AppColors.primary,
-            validator: (v) {
-              if (v == null || v.trim().isEmpty) {
-                return 'Please enter your table number or scan the QR code';
-              }
-              return null;
-            },
-            decoration: _inputDecoration('e.g. T5 or scan the table QR code'),
-          ),
-          const SizedBox(height: 8),
-          Row(children: [
-            const Icon(Icons.info_outline_rounded,
-                size: 13, color: AppColors.textDisabled),
-            const SizedBox(width: 6),
-            Text(
-              'Scan the QR code on your table for instant fill-in',
-              style: GoogleFonts.dmSans(
-                  fontSize: 11, color: AppColors.textDisabled),
-            ),
-          ]),
-        ],
       );
 }
 
