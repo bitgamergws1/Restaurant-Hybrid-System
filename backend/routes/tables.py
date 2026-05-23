@@ -14,10 +14,10 @@ tables_bp = Blueprint("tables", __name__)
 def get_available_tables():
     db = get_db()
     result = db.table("restaurant_tables") \
-        .select("id, table_number, capacity, floor, status") \
-        .neq("status", "inactive") \
-        .order("table_number") \
-        .execute()
+    .select("*") \
+    .neq("status", "inactive") \
+    .order("table_number") \
+    .execute()
     tables = result.data or []
     return success_response({"tables": tables, "count": len(tables)}, "Tables fetched", 200)
 
