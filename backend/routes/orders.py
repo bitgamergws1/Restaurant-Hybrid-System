@@ -21,8 +21,7 @@ VALID_STATUS_TRANSITIONS = {
 }
 
 
-# ── Create order (dine_in or delivery) ───────────────────────────────────────
-@orders_bp.route("/", methods=["POST"])
+@orders_bp.route("/", methods=["POST"], strict_slashes=False)
 @require_auth
 def create_order():
     data = request.get_json(silent=True)
@@ -89,7 +88,6 @@ def create_order():
         if not table_id:
             return error_response("table_id is required for dine-in orders", 400)
 
-        # ── Validate table exists in restaurant_tables ────────────────────────
         table_result = db.table("restaurant_tables") \
             .select("id, table_number, status") \
             .eq("table_number", table_id) \
@@ -105,7 +103,6 @@ def create_order():
             return error_response(
                 f"Table '{table_id}' is currently inactive and cannot accept orders.", 400
             )
-        # ─────────────────────────────────────────────────────────────────────
 
     elif order_type == "delivery":
         pincode = str(data.get("pincode", "")).strip()
@@ -180,8 +177,7 @@ def create_order():
     )
 
 
-# ── Get single order with items ───────────────────────────────────────────────
-@orders_bp.route("/<order_id>", methods=["GET"])
+@orders_bp.route("/<order_id>", methods=["GET"], strict_slashes=False)
 @require_auth
 def get_order(order_id):
     if not validate_uuid(order_id):
@@ -208,8 +204,7 @@ def get_order(order_id):
     )
 
 
-# ── Update order status (admin/staff) ─────────────────────────────────────────
-@orders_bp.route("/<order_id>/status", methods=["PATCH"])
+@orders_bp.route("/<order_id>/status", methods=["PATCH"], strict_slashes=False)
 @require_admin
 def update_order_status(order_id):
     if not validate_uuid(order_id):
@@ -244,8 +239,7 @@ def update_order_status(order_id):
     return success_response({"order": result.data[0]}, "Order status updated successfully", 200)
 
 
-# ── Set estimated delivery / table time (admin/staff) ────────────────────────
-@orders_bp.route("/<order_id>/eta", methods=["PATCH"])
+@orders_bp.route("/<order_id>/eta", methods=["PATCH"], strict_slashes=False)
 @require_admin
 def set_order_eta(order_id):
     if not validate_uuid(order_id):
@@ -258,12 +252,10 @@ def set_order_eta(order_id):
     payload = {}
 
     if "estimated_delivery_time" in data:
-        val = data["estimated_delivery_time"]
-        payload["estimated_delivery_time"] = val
+        payload["estimated_delivery_time"] = data["estimated_delivery_time"]
 
     if "estimated_table_time" in data:
-        val = data["estimated_table_time"]
-        payload["estimated_table_time"] = val
+        payload["estimated_table_time"] = data["estimated_table_time"]
 
     eta_minutes = data.get("eta_minutes")
     if eta_minutes is not None and not payload:
@@ -292,8 +284,7 @@ def set_order_eta(order_id):
     return success_response({"order": result.data[0]}, "ETA updated successfully", 200)
 
 
-# ── Assign rider to delivery order (admin/staff) ──────────────────────────────
-@orders_bp.route("/<order_id>/assign-rider", methods=["PATCH"])
+@orders_bp.route("/<order_id>/assign-rider", methods=["PATCH"], strict_slashes=False)
 @require_admin
 def assign_rider(order_id):
     if not validate_uuid(order_id):
@@ -334,17 +325,13 @@ def assign_rider(order_id):
         return error_response("Failed to assign rider", 500)
 
     return success_response(
-        {
-            "order": result.data[0],
-            "rider": rider
-        },
+        {"order": result.data[0], "rider": rider},
         f"Rider '{rider['name']}' assigned successfully",
         200
     )
 
 
-# ── Get orders for a specific user ────────────────────────────────────────────
-@orders_bp.route("/user/<user_id>", methods=["GET"])
+@orders_bp.route("/user/<user_id>", methods=["GET"], strict_slashes=False)
 @require_auth
 def get_user_orders(user_id):
     if not validate_uuid(user_id):
