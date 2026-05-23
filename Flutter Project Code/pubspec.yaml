@@ -1,6 +1,6 @@
 name: spice_route
 description: "Spice Route — Premium Hybrid Restaurant Ordering System"
-version: 1.0.0+1
+version: 1.0.1+2
 publish_to: 'none'
 
 environment:
@@ -12,6 +12,7 @@ dependencies:
 
   # ── State Management ──────────────────────────────────────────────────────
   flutter_riverpod: ^2.5.1
+  qr_flutter: ^4.1.0
   riverpod_annotation: ^2.3.5
 
   # ── Routing ───────────────────────────────────────────────────────────────
