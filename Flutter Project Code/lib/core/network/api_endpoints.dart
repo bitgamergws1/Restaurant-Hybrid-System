@@ -63,7 +63,11 @@ abstract final class ApiEndpoints {
   static const String adminOrders = '/admin/orders';
 
   // ── Tables ─────────────────────────────────────────────────────────────────
+  /// Admin: all tables (requires admin/staff role)
   static const String tables = '/tables';
+
+  /// Customer: non-inactive tables for checkout dropdown (requires auth)
+  static const String availableTables = '/tables/available';
   static String table(String id) => '/tables/$id';
   static String tableRegenerateQr(String id) => '/tables/$id/regenerate-qr';
 
