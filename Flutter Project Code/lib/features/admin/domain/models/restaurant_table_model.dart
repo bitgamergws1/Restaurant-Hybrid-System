@@ -30,8 +30,12 @@ final class RestaurantTableModel {
         capacity: j['capacity'] as int? ?? 4,
         floor: j['floor'] as String? ?? 'Ground Floor',
         status: j['status'] as String? ?? 'free',
+        // qr_token not returned by /tables/available — default to empty string
         qrToken: j['qr_token'] as String? ?? '',
-        createdAt: DateTime.parse(j['created_at'] as String),
+        // created_at not returned by /tables/available — default to now()
+        createdAt: j['created_at'] != null
+            ? DateTime.parse(j['created_at'] as String)
+            : DateTime.now(),
       );
 
   @override
