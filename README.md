@@ -1,8 +1,8 @@
-# Spice Route — Restaurant Order Management System
+# Spice Route - Restaurant Order Management System
 
-**DevNest Python Developer Internship — Week 2 Project**
+**DevNest Python Developer Internship - Week 2 Project**
 
-A production-grade hybrid restaurant ordering system built with Python Flask, Supabase PostgreSQL, and Flutter. The system supports two distinct ordering modes — Dine-In via QR table scanning and Home Delivery via India Post pincode resolution — served from a single unified REST API. The Flutter application ships as a compiled Android APK and a Flutter Web build, both consuming the same backend deployed on Render.
+A production-grade hybrid restaurant ordering system built with Python Flask, Supabase PostgreSQL, and Flutter. The system supports two distinct ordering modes - Dine-In via QR table scanning and Home Delivery via India Post pincode resolution - served from a single unified REST API. The Flutter application ships as a compiled Android APK and a Flutter Web build, both consuming the same backend deployed on Render.
 
 ---
 
@@ -19,7 +19,7 @@ A production-grade hybrid restaurant ordering system built with Python Flask, Su
 
 ## Testing the Admin Dashboard
 
-> The app automatically detects the logged-in user's `role` on every login. If `role` is `admin`, GoRouter's redirect guard fires immediately and routes directly to the Admin Dashboard — no manual navigation required.
+> The app automatically detects the logged-in user's `role` on every login. If `role` is `admin`, GoRouter's redirect guard fires immediately and routes directly to the Admin Dashboard - no manual navigation required.
 
 Use these credentials on the login screen to access the Admin Dashboard:
 
@@ -28,7 +28,7 @@ Use these credentials on the login screen to access the Admin Dashboard:
 | Email | `admin@spiceroute.com` |
 | Password | `Admin@1234` |
 
-After login, `app_router.dart` reads the `role` field from the session response. Because this account carries `role: admin`, it bypasses the customer home screen and opens `admin_shell.dart` → `dashboard_screen.dart` automatically. All admin tabs (Orders, Delivery, Menu, Tables, Riders, Complaints, Analytics) are immediately accessible.
+After login, `app_router.dart` reads the `role` field from the session response. Because this account carries `role: admin`, it bypasses the customer home screen and opens `admin_shell.dart` - `dashboard_screen.dart` automatically. All admin tabs (Orders, Delivery, Menu, Tables, Riders, Complaints, Analytics) are immediately accessible.
 
 ---
 
@@ -235,7 +235,7 @@ Restaurant-Hybrid-System/
 | Database client | supabase-py 2.5 |
 | Password hashing | Werkzeug PBKDF2-SHA256 |
 | Transactional email | Brevo HTTP API (replaces SMTP) |
-| AI gateway | DevNest Proxy — deepshi-r1, deepshi-r2 |
+| AI gateway | DevNest Proxy - deepshi-r1, deepshi-r2 |
 | Pincode resolution | India Post public API |
 | Deployment | Render (gunicorn, 2 workers) |
 | Flutter version | Flutter 3 / Dart 3.3+ |
@@ -249,14 +249,14 @@ Restaurant-Hybrid-System/
 
 ---
 
-## Internship Brief — Requirements Coverage
+## Internship Brief - Requirements Coverage
 
 | Requirement from Brief | How It Is Implemented |
 |---|---|
 | Display restaurant menu | `GET /api/v1/menu/` with `category`, `search`, `available` query params |
-| Add / update / remove food items | Admin CRUD on `/api/v1/menu/` — POST, PATCH, DELETE |
+| Add / update / remove food items | Admin CRUD on `/api/v1/menu/` - POST, PATCH, DELETE |
 | Food categories and pricing | `category`, `subcategory`, `price`, `tags` columns with live filters |
-| Customer order placement | `POST /api/v1/orders/` — routes dine-in and delivery from one endpoint |
+| Customer order placement | `POST /api/v1/orders/` - routes dine-in and delivery from one endpoint |
 | Quantity selection | Per-item `quantity` field validated (must be positive integer) |
 | Multiple item ordering | Accepts array of `{menu_item_id, quantity}` objects in one payload |
 | Automatic bill generation | `billing_service.py` calculates before any DB write; frontend prices ignored |
@@ -266,10 +266,10 @@ Restaurant-Hybrid-System/
 | Store customer orders | `orders` + `order_items` tables in Supabase with full relational structure |
 | Maintain order history | `GET /api/v1/orders/user/<user_id>` returns paginated history |
 | Retrieve previous order records | `GET /api/v1/orders/<order_id>` with joined items |
-| Total orders tracking | `/api/v1/admin/analytics` — total, paid, cancelled, dine-in, delivery counts |
+| Total orders tracking | `/api/v1/admin/analytics` - total, paid, cancelled, dine-in, delivery counts |
 | Daily revenue calculation | Daily breakdown array in analytics response, sorted newest first |
 | Most sold items analysis | Pareto sort by quantity sold, top 20 returned |
-| Sales summary generation | Full summary object — revenue, GST collected, average order value |
+| Sales summary generation | Full summary object - revenue, GST collected, average order value |
 | Flask API for orders / menu | All routes under `/api/v1/` using Flask Blueprints |
 | GET / POST request handling | All standard HTTP verbs implemented with proper status codes |
 | Database integration | Supabase PostgreSQL with full schema, indices, triggers, RLS |
@@ -279,26 +279,26 @@ Restaurant-Hybrid-System/
 ### Bonus Features Implemented Beyond the Brief
 
 - OTP-based email verification for signup and password reset
-- Dine-In QR mode — customer scans table QR, `table_id` auto-populated
+- Dine-In QR mode - customer scans table QR, `table_id` auto-populated
 - India Post pincode API integration for delivery address resolution
 - Coordinate storage (`lat`, `lng`) on delivery orders
-- AI Waiter Recommendation (deepshi-r1) — context-aware menu suggestions
-- AI Complaint Triage (deepshi-r2) — auto-classifies category, sentiment, priority
-- Identity leak sanitiser — strips underlying model identity from AI responses
-- Smart menu selection — keyword + tag scoring picks the 60 most relevant items for AI context
+- AI Waiter Recommendation (deepshi-r1) - context-aware menu suggestions
+- AI Complaint Triage (deepshi-r2) - auto-classifies category, sentiment, priority
+- Identity leak sanitiser - strips underlying model identity from AI responses
+- Smart menu selection - keyword + tag scoring picks the 60 most relevant items for AI context
 - Mock Razorpay payment verification with test-mode ID validation
 - Session-based authentication with `X-Session-Token` header
-- Role-based access control — `customer`, `staff`, `admin`
+- Role-based access control - `customer`, `staff`, `admin`
 - Restaurant table management with QR token regeneration
 - Delivery rider management with active/inactive toggle
 - Real-time order tracking timeline with 20-second auto-refresh
-- ETA system — admin sets `eta_minutes`, customer sees countdown
-- Rider assignment — admin assigns active rider to delivery orders
-- Flutter analytics dashboard — revenue trend, peak hours, ogive chart, status distribution
-- Flutter admin panel — responsive sidebar (desktop) / bottom nav (mobile)
+- ETA system - admin sets `eta_minutes`, customer sees countdown
+- Rider assignment - admin assigns active rider to delivery orders
+- Flutter analytics dashboard - revenue trend, peak hours, ogive chart, status distribution
+- Flutter admin panel - responsive sidebar (desktop) / bottom nav (mobile)
 - Row Level Security on all 10 Supabase tables
-- pg_cron jobs — auto-purge expired OTPs and sessions every 2 minutes
-- Cross-platform Flutter build — Android APK + Web
+- pg_cron jobs - auto-purge expired OTPs and sessions every 2 minutes
+- Cross-platform Flutter build - Android APK + Web
 
 ---
 
@@ -334,11 +334,11 @@ Client                 Flask                  Supabase               Brevo
   |<-- 201 + token ------- |                       |                     |
 ```
 
-OTP replay is blocked by the `is_verified` flag — once used, the record cannot be used again. The cron job deletes it within 2 minutes regardless.
+OTP replay is blocked by the `is_verified` flag - once used, the record cannot be used again. The cron job deletes it within 2 minutes regardless.
 
 ### Billing Engine
 
-`billing_service.py` is called before any order row is written. Prices are always read from the `menu_items` table — any price the client sends is discarded. This prevents price tampering from the frontend.
+`billing_service.py` is called before any order row is written. Prices are always read from the `menu_items` table - any price the client sends is discarded. This prevents price tampering from the frontend.
 
 ```
 unit_price (from DB) × quantity = item_total       (per line item)
@@ -369,8 +369,8 @@ Both AI features route through the DevNest proxy at `https://devnest-proxy-serve
 
 Both calls include:
 - Auto-retry on HTTP 502/503/504 (cold-start protection on Render free tier)
-- `_strip_thinking()` — removes leaked `<thinking>` blocks and raw SSE reasoning fragments
-- `_sanitise_identity()` — replaces any leaked underlying model identity with the restaurant name
+- `_strip_thinking()` - removes leaked `<thinking>` blocks and raw SSE reasoning fragments
+- `_sanitise_identity()` - replaces any leaked underlying model identity with the restaurant name
 
 ### Supabase Schema Design
 
@@ -405,7 +405,7 @@ The schema is entirely defined in `supabase_schema.sql` and can be deployed in o
 | purpose | VARCHAR(20) | `signup` or `reset` |
 | metadata | JSONB | Holds signup payload until OTP verified |
 | expires_at | TIMESTAMPTZ | 5 minutes from creation |
-| is_verified | BOOLEAN | Marked true on use — blocks replay |
+| is_verified | BOOLEAN | Marked true on use - blocks replay |
 
 ### `sessions`
 | Column | Type | Notes |
@@ -421,8 +421,8 @@ The schema is entirely defined in `supabase_schema.sql` and can be deployed in o
 | price | NUMERIC(10,2) | Non-negative, always read server-side |
 | category | VARCHAR(100) | Indexed |
 | subcategory | VARCHAR(100) | Optional |
-| is_available | BOOLEAN | Indexed — used in all live filters |
-| tags | TEXT[] | Used by AI scoring — `veg`, `spicy`, `bestseller`, etc. |
+| is_available | BOOLEAN | Indexed - used in all live filters |
+| tags | TEXT[] | Used by AI scoring - `veg`, `spicy`, `bestseller`, etc. |
 | sort_order | INTEGER | Controls display order |
 
 ### `restaurant_tables`
@@ -445,9 +445,9 @@ The schema is entirely defined in `supabase_schema.sql` and can be deployed in o
 | Column | Type | Notes |
 |---|---|---|
 | order_type | VARCHAR(20) | `dine_in` or `delivery` |
-| table_id | VARCHAR(50) | Dine-in only — matched against `restaurant_tables` |
-| delivery_address | JSONB | Structured — address_line, area, district, state, pincode |
-| delivery_coordinates | JSONB | `{lat, lng}` — stored from client GPS input |
+| table_id | VARCHAR(50) | Dine-in only - matched against `restaurant_tables` |
+| delivery_address | JSONB | Structured - address_line, area, district, state, pincode |
+| delivery_coordinates | JSONB | `{lat, lng}` - stored from client GPS input |
 | status | VARCHAR(30) | Transition-enforced via `VALID_STATUS_TRANSITIONS` |
 | subtotal | NUMERIC(10,2) | |
 | gst_amount | NUMERIC(10,2) | 18% of subtotal |
@@ -455,15 +455,15 @@ The schema is entirely defined in `supabase_schema.sql` and can be deployed in o
 | payment_status | VARCHAR(20) | `pending`, `paid`, `failed`, `refunded` |
 | estimated_delivery_time | TIMESTAMPTZ | Set by admin for delivery orders |
 | estimated_table_time | TIMESTAMPTZ | Set by admin for dine-in orders |
-| rider_id | UUID | FK to riders — set via assign-rider endpoint |
+| rider_id | UUID | FK to riders - set via assign-rider endpoint |
 | invoice_sent | BOOLEAN | Prevents duplicate invoice emails |
 
 ### `order_items`
 | Column | Type | Notes |
 |---|---|---|
-| item_name | VARCHAR(255) | Snapshotted at order time — preserved if menu item deleted |
+| item_name | VARCHAR(255) | Snapshotted at order time - preserved if menu item deleted |
 | quantity | INTEGER | Min 1 |
-| unit_price | NUMERIC(10,2) | Snapshotted from DB — frontend value discarded |
+| unit_price | NUMERIC(10,2) | Snapshotted from DB - frontend value discarded |
 | item_total | NUMERIC(10,2) | unit_price × quantity |
 
 ### `complaints`
@@ -522,12 +522,12 @@ All responses follow the envelope:
 
 ---
 
-### Auth — `/api/v1/auth`
+### Auth - `/api/v1/auth`
 
 | Method | Route | Auth | Description |
 |---|---|---|---|
 | POST | `/signup` | Public | Create account, send OTP to email |
-| POST | `/verify-otp` | Public | Verify OTP — activates account or confirms reset |
+| POST | `/verify-otp` | Public | Verify OTP - activates account or confirms reset |
 | POST | `/resend-otp` | Public | Resend a fresh OTP |
 | POST | `/login` | Public | Authenticate, receive session token |
 | POST | `/logout` | Token | Delete session from DB |
@@ -566,7 +566,7 @@ Invalidates all existing sessions for that user after success.
 
 ---
 
-### Menu — `/api/v1/menu`
+### Menu - `/api/v1/menu`
 
 | Method | Route | Auth | Description |
 |---|---|---|---|
@@ -577,9 +577,9 @@ Invalidates all existing sessions for that user after success.
 | PATCH | `/<item_id>` | Admin | Partial update |
 | DELETE | `/<item_id>` | Admin | Remove item |
 
-**GET /** — Query params: `available=true`, `category=Starters`, `search=paneer`
+**GET /** - Query params: `available=true`, `category=Starters`, `search=paneer`
 
-**POST /** — Create item
+**POST /** - Create item
 ```json
 {
   "name": "Paneer Tikka",
@@ -595,7 +595,7 @@ Invalidates all existing sessions for that user after success.
 
 ---
 
-### Orders — `/api/v1/orders`
+### Orders - `/api/v1/orders`
 
 | Method | Route | Auth | Description |
 |---|---|---|---|
@@ -606,7 +606,7 @@ Invalidates all existing sessions for that user after success.
 | PATCH | `/<order_id>/assign-rider` | Admin | Assign delivery rider |
 | GET | `/user/<user_id>` | Token | User order history |
 
-**POST /** — Dine-In
+**POST /** - Dine-In
 ```json
 {
   "order_type": "dine_in",
@@ -619,7 +619,7 @@ Invalidates all existing sessions for that user after success.
 }
 ```
 
-**POST /** — Home Delivery
+**POST /** - Home Delivery
 ```json
 {
   "order_type": "delivery",
@@ -658,14 +658,14 @@ Invalid transitions return `400` with the list of allowed next states.
 
 ---
 
-### Payments — `/api/v1/payments`
+### Payments - `/api/v1/payments`
 
 | Method | Route | Auth | Description |
 |---|---|---|---|
 | POST | `/verify` | Token | Verify payment, confirm order |
 | POST | `/invoice/<order_id>` | Token | Email HTML invoice to registered email |
 
-**POST /verify** — Mock Razorpay (test mode)
+**POST /verify** - Mock Razorpay (test mode)
 ```json
 {
   "order_id": "uuid",
@@ -677,7 +677,7 @@ On success: order marked `paid` + `confirmed`, invoice email dispatched automati
 
 ---
 
-### AI — `/api/v1/ai`
+### AI - `/api/v1/ai`
 
 | Method | Route | Auth | Description |
 |---|---|---|---|
@@ -689,7 +689,7 @@ On success: order marked `paid` + `confirmed`, invoice email dispatched automati
 ```json
 { "prompt": "kuch spicy aur vegetarian chahiye, light ho" }
 ```
-Response — conversational recommendation in the same language as the prompt.
+Response - conversational recommendation in the same language as the prompt.
 
 **POST /triage**
 ```json
@@ -715,7 +715,7 @@ Response `201`:
 
 ---
 
-### Admin — `/api/v1/admin`
+### Admin - `/api/v1/admin`
 
 | Method | Route | Auth | Description |
 |---|---|---|---|
@@ -725,7 +725,7 @@ Response `201`:
 | PATCH | `/complaints/<id>/status` | Admin | Update complaint status |
 | GET | `/users` | Admin | All registered users |
 
-**GET /analytics** — Query params: `from=YYYY-MM-DD`, `to=YYYY-MM-DD`
+**GET /analytics** - Query params: `from=YYYY-MM-DD`, `to=YYYY-MM-DD`
 
 Analytics response includes:
 - Total, paid, cancelled, pending order counts
@@ -739,7 +739,7 @@ Analytics response includes:
 
 ---
 
-### Tables — `/api/v1/tables`
+### Tables - `/api/v1/tables`
 
 | Method | Route | Auth | Description |
 |---|---|---|---|
@@ -751,7 +751,7 @@ Analytics response includes:
 
 ---
 
-### Riders — `/api/v1/riders`
+### Riders - `/api/v1/riders`
 
 | Method | Route | Auth | Description |
 |---|---|---|---|
@@ -762,7 +762,7 @@ Analytics response includes:
 
 ---
 
-### Postal — `/api/v1/postal`
+### Postal - `/api/v1/postal`
 
 | Method | Route | Auth | Description |
 |---|---|---|---|
@@ -780,13 +780,13 @@ The Flutter app is structured around the feature-first pattern. Each feature con
 
 All application state is managed via Riverpod 2. Providers are organized per feature:
 
-- `authNotifierProvider` — `Notifier<AuthState>` sealed class state machine; drives GoRouter redirects
-- `menuItemsProvider` — `FutureProvider.autoDispose` filtered by selected category and search query
-- `cartProvider` — `NotifierProvider<CartNotifier, List<CartItem>>` with derived subtotal/GST/total providers
-- `createOrderProvider` — `AutoDisposeNotifier<CreateOrderState>` sealed class
-- `adminOrdersProvider`, `adminMenuProvider`, `adminTablesProvider`, `adminRidersProvider`, `adminComplaintsProvider` — all `AsyncNotifierProvider` with refresh and mutation methods
-- `aiChatProvider` — `AutoDisposeNotifier<AiChatState>` managing full chat thread
-- `adminAnalyticsProvider` — `AsyncNotifierProvider<AdminAnalyticsNotifier, AnalyticsData>`
+- `authNotifierProvider` - `Notifier<AuthState>` sealed class state machine; drives GoRouter redirects
+- `menuItemsProvider` - `FutureProvider.autoDispose` filtered by selected category and search query
+- `cartProvider` - `NotifierProvider<CartNotifier, List<CartItem>>` with derived subtotal/GST/total providers
+- `createOrderProvider` - `AutoDisposeNotifier<CreateOrderState>` sealed class
+- `adminOrdersProvider`, `adminMenuProvider`, `adminTablesProvider`, `adminRidersProvider`, `adminComplaintsProvider` - all `AsyncNotifierProvider` with refresh and mutation methods
+- `aiChatProvider` - `AutoDisposeNotifier<AiChatState>` managing full chat thread
+- `adminAnalyticsProvider` - `AsyncNotifierProvider<AdminAnalyticsNotifier, AnalyticsData>`
 
 ### Navigation
 
@@ -802,14 +802,14 @@ GoRouter handles all routing with role-based guards in the `redirect` callback:
 
 `ApiClient` wraps Dio with two interceptors:
 
-- `_AuthInterceptor` — reads the session token from SharedPreferences and injects it as `X-Session-Token` on every request; on 401 it clears both the token and cached user from SharedPreferences, triggering GoRouter to redirect to login
-- `_LoggingInterceptor` — logs request method and URI in debug builds only
+- `_AuthInterceptor` - reads the session token from SharedPreferences and injects it as `X-Session-Token` on every request; on 401 it clears both the token and cached user from SharedPreferences, triggering GoRouter to redirect to login
+- `_LoggingInterceptor` - logs request method and URI in debug builds only
 
 All responses are unwrapped from the `{success, message, data}` envelope in `_handle()`. Non-2xx responses throw a typed `ApiException` which repositories catch and convert to result records.
 
 ### Analytics Dashboard
 
-The admin analytics screen (`analytics_screen.dart`) computes all chart data client-side from the raw orders list. IST conversion is applied throughout — all timestamps stored in UTC are converted to IST (`+05:30`) for bucketing and display. Charts include:
+The admin analytics screen (`analytics_screen.dart`) computes all chart data client-side from the raw orders list. IST conversion is applied throughout - all timestamps stored in UTC are converted to IST (`+05:30`) for bucketing and display. Charts include:
 
 - Revenue trend line chart with gradient fill (hourly for 1D range, daily for 3D/7D/30D)
 - Orders volume grouped bar chart (dine-in vs delivery)
@@ -843,11 +843,11 @@ Set these in Render → Environment tab. No `.env` file is used in production.
 
 ## Supabase Setup
 
-**Step 1 — Run the Schema**
+**Step 1 - Run the Schema**
 
-Open the SQL Editor in your Supabase project, paste the full contents of `backend/supabase_schema.sql`, and run it. The script is idempotent — safe to re-run. It creates all tables, indices, triggers, RLS policies, and registers the cron jobs in one execution.
+Open the SQL Editor in your Supabase project, paste the full contents of `backend/supabase_schema.sql`, and run it. The script is idempotent - safe to re-run. It creates all tables, indices, triggers, RLS policies, and registers the cron jobs in one execution.
 
-**Step 2 — Verify Cron Jobs**
+**Step 2 - Verify Cron Jobs**
 
 ```sql
 SELECT jobname, schedule, active
@@ -857,7 +857,7 @@ WHERE jobname IN ('purge_expired_otps', 'purge_expired_sessions');
 
 Both jobs should show `active = true`. They run every 2 minutes and hard-delete all expired OTPs and sessions.
 
-**Step 3 — Service Role Key**
+**Step 3 - Service Role Key**
 
 Use the `service_role` key (not `anon`) as `SUPABASE_SERVICE_KEY`. The service role bypasses RLS and is required for the backend to operate. Never expose this key in the Flutter client.
 
@@ -878,7 +878,7 @@ Use the `service_role` key (not `anon`) as `SUPABASE_SERVICE_KEY`. The service r
 6. Add all environment variables in the **Environment** tab
 7. Set **Health Check Path** to `/health`
 
-The `--timeout 120` flag is important — AI triage calls via deepshi-r2 can take up to 80 seconds on the first request. Without this, gunicorn will kill the worker mid-request.
+The `--timeout 120` flag is important - AI triage calls via deepshi-r2 can take up to 80 seconds on the first request. Without this, gunicorn will kill the worker mid-request.
 
 ### Flutter Android APK
 
@@ -953,7 +953,7 @@ Update `ApiConfig.baseUrl` in `lib/core/network/api_endpoints.dart` to point to 
 | Requirement | Status |
 |---|---|
 | GitHub Repository | https://github.com/bitgamergws1/Restaurant-Hybrid-System |
-| Complete Source Code | `backend/` — Flask API; `Flutter Project Code/` — Flutter app |
+| Complete Source Code | `backend/` - Flask API; `Flutter Project Code/` - Flutter app |
 | Deployment Link | https://restaurant-hybrid-system.onrender.com |
 | Android APK | https://github.com/bitgamergws1/Restaurant-Hybrid-System/releases/tag/SPICE_ROUTE_APK |
 | Flutter Web Build | `web/` directory in repository |
@@ -961,55 +961,55 @@ Update `ApiConfig.baseUrl` in `lib/core/network/api_endpoints.dart` to point to 
 
 ---
 
-## All Features — Completion Status
+## All Features - Completion Status
 
 | Module | Status |
 |---|---|
-| Supabase schema — tables, indices, triggers, RLS, cron | Done |
-| Auth — signup with OTP email verification | Done |
-| Auth — login, logout, session token | Done |
-| Auth — forgot password, OTP reset, new password | Done |
-| Auth — resend OTP | Done |
+| Supabase schema - tables, indices, triggers, RLS, cron | Done |
+| Auth - signup with OTP email verification | Done |
+| Auth - login, logout, session token | Done |
+| Auth - forgot password, OTP reset, new password | Done |
+| Auth - resend OTP | Done |
 | OTP persistence in Supabase with replay protection | Done |
 | Session token system with 24-hour expiry | Done |
-| Menu CRUD — public read, admin write | Done |
+| Menu CRUD - public read, admin write | Done |
 | Category filter, text search, availability toggle | Done |
-| Hybrid order creation — dine-in and delivery | Done |
+| Hybrid order creation - dine-in and delivery | Done |
 | Table validation on dine-in order creation | Done |
 | India Post pincode resolution for delivery | Done |
 | Delivery coordinate storage | Done |
 | Order status transitions with server-side enforcement | Done |
-| ETA endpoint — admin sets minutes, stored as timestamp | Done |
-| Rider management — CRUD, active toggle | Done |
+| ETA endpoint - admin sets minutes, stored as timestamp | Done |
+| Rider management - CRUD, active toggle | Done |
 | Rider assignment to delivery orders | Done |
-| Billing engine — subtotal, 18% GST, total | Done |
+| Billing engine - subtotal, 18% GST, total | Done |
 | Mock Razorpay payment verification | Done |
 | HTML invoice email via Brevo | Done |
-| AI Waiter Recommendation — deepshi-r1 | Done |
+| AI Waiter Recommendation - deepshi-r1 | Done |
 | Smart menu item scoring for AI context | Done |
-| AI Complaint Triage — deepshi-r2, strict JSON | Done |
+| AI Complaint Triage - deepshi-r2, strict JSON | Done |
 | Identity leak sanitiser for AI responses | Done |
 | Thinking block stripper for AI responses | Done |
 | Auto-retry on proxy 502/503/504 | Done |
-| Admin analytics — revenue, Pareto items, complaints | Done |
+| Admin analytics - revenue, Pareto items, complaints | Done |
 | Admin complaints management with status transitions | Done |
 | Restaurant table management with QR token regeneration | Done |
-| Auth middleware — require_auth, require_admin | Done |
-| Input validators — email, phone, pincode, UUID | Done |
+| Auth middleware - require_auth, require_admin | Done |
+| Input validators - email, phone, pincode, UUID | Done |
 | Standardised JSON response envelope | Done |
 | Row Level Security on all 10 tables | Done |
 | pg_cron jobs for OTP and session cleanup | Done |
-| Flutter auth screens — signup, login, OTP, reset | Done |
-| Flutter menu browsing — grid, category, search | Done |
-| Flutter cart — quantity stepper, bill preview | Done |
-| Flutter checkout — dine-in QR scan + delivery pincode | Done |
-| Flutter order tracking — timeline with 20s auto-refresh | Done |
-| Flutter payment screen — mock Razorpay, success state | Done |
+| Flutter auth screens - signup, login, OTP, reset | Done |
+| Flutter menu browsing - grid, category, search | Done |
+| Flutter cart - quantity stepper, bill preview | Done |
+| Flutter checkout - dine-in QR scan + delivery pincode | Done |
+| Flutter order tracking - timeline with 20s auto-refresh | Done |
+| Flutter payment screen - mock Razorpay, success state | Done |
 | Flutter AI waiter chat screen | Done |
-| Flutter admin — dashboard, orders, delivery, menu | Done |
-| Flutter admin — tables, riders, complaints | Done |
-| Flutter analytics — 7 chart types, IST conversion | Done |
-| Responsive Flutter layout — mobile and desktop | Done |
-| Android APK build — obfuscated release | Done |
-| Flutter Web build — `web/` directory | Done |
+| Flutter admin - dashboard, orders, delivery, menu | Done |
+| Flutter admin - tables, riders, complaints | Done |
+| Flutter analytics - 7 chart types, IST conversion | Done |
+| Responsive Flutter layout - mobile and desktop | Done |
+| Android APK build - obfuscated release | Done |
+| Flutter Web build - `web/` directory | Done |
 | Deployment on Render with gunicorn | Done |
