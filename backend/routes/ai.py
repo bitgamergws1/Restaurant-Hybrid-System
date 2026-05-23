@@ -8,8 +8,7 @@ from utils.validators import validate_required_fields, validate_uuid
 ai_bp = Blueprint("ai", __name__)
 
 
-# ai waiter recommendation
-@ai_bp.route("/recommend", methods=["POST"])
+@ai_bp.route("/recommend", methods=["POST"], strict_slashes=False)
 @require_auth
 def recommend():
     data = request.get_json(silent=True)
@@ -29,10 +28,6 @@ def recommend():
 
     db = get_db()
 
-    # ── FIX #1: Added subcategory + tags (were missing before).
-    # _select_menu_items() uses both for relevance scoring — without them
-    # every item scored 0 and the AI got a random 60-item dump instead of
-    # the items actually relevant to the customer's request.
     menu_result = db.table("menu_items").select(
         "name, category, subcategory, price, description, tags"
     ).eq("is_available", True).order("sort_order").execute()
@@ -60,8 +55,7 @@ def recommend():
     )
 
 
-# ai complaint triage
-@ai_bp.route("/triage", methods=["POST"])
+@ai_bp.route("/triage", methods=["POST"], strict_slashes=False)
 @require_auth
 def triage():
     data = request.get_json(silent=True)
@@ -120,8 +114,7 @@ def triage():
     )
 
 
-# proxy health check
-@ai_bp.route("/health", methods=["GET"])
+@ai_bp.route("/health", methods=["GET"], strict_slashes=False)
 def proxy_health():
     result = check_proxy_health()
     status_code = 200 if result["online"] else 503
