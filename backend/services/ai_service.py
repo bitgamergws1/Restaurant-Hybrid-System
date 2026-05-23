@@ -432,13 +432,11 @@ def get_ai_recommendation(user_prompt: str, menu_context: list) -> dict:
 
 def triage_complaint(raw_text: str) -> dict:
     system = (
-        "You are a complaint triage engine for a restaurant management system. "
-        "Analyse the customer complaint and classify it. "
-        "Respond with ONLY a raw JSON object — no markdown, no backticks, no tables, no explanation. "
-        "Output EXACTLY this JSON structure and nothing else:\n"
-        '{"category": "<food_quality|delivery|service|billing|hygiene|other>", '
-        '"sentiment": "<positive|neutral|negative|very_negative>", '
-        '"priority": "<low|medium|high|critical>"}\n\n'
+        "You are a complaint triage engine. "
+        "Respond with ONLY a raw JSON object — no markdown, no backticks, no explanation:\n"
+        '{"category":"<food_quality|delivery|service|billing|hygiene|other>",'
+        '"sentiment":"<positive|neutral|negative|very_negative>",'
+        '"priority":"<low|medium|high|critical>"}\n\n'
         "Priority rules:\n"
         "- critical: hygiene issues, health risk, foreign objects in food\n"
         "- high: completely wrong order, food not delivered, major billing error\n"
@@ -447,25 +445,20 @@ def triage_complaint(raw_text: str) -> dict:
     )
 
     prompt = (
-        "Classify this complaint as a JSON object with keys: category, sentiment, priority.\n"
-        "Output ONLY the JSON — no markdown, no tables, no extra text.\n\n"
+        "Classify this complaint. Output ONLY the JSON, nothing else.\n\n"
         f"Complaint: {raw_text}"
     )
 
-    result = _call_proxy(DEEPSHI_R2, prompt, system=system, timeout=TIMEOUT_R2)
+    result = _call_proxy(DEEPSHI_R1, prompt, system=system, timeout=TIMEOUT_R1)
 
     if not result:
         return {
             "success": False,
             "triage": None,
-            "model_used": DEEPSHI_R2,
+            "model_used": DEEPSHI_R1,
             "message": "Complaint triage service is currently unavailable. Please retry."
         }
 
-    # ── Robust JSON extraction ────────────────────────────────────────────────
-    # R2 sometimes returns a markdown table or prose instead of pure JSON.
-    # _extract_json_object() searches the entire response for the first valid
-    # { ... } block that contains the "category" key.
     cleaned_json = _extract_json_object(result)
 
     if not cleaned_json:
@@ -473,7 +466,7 @@ def triage_complaint(raw_text: str) -> dict:
         return {
             "success": False,
             "triage": None,
-            "model_used": DEEPSHI_R2,
+            "model_used": DEEPSHI_R1,
             "message": "AI returned an unexpected response format. Please retry."
         }
 
@@ -502,7 +495,7 @@ def triage_complaint(raw_text: str) -> dict:
                 "sentiment": sentiment,
                 "priority": priority
             },
-            "model_used": DEEPSHI_R2
+            "model_used": DEEPSHI_R1
         }
 
     except (json.JSONDecodeError, ValueError) as e:
@@ -510,7 +503,7 @@ def triage_complaint(raw_text: str) -> dict:
         return {
             "success": False,
             "triage": None,
-            "model_used": DEEPSHI_R2,
+            "model_used": DEEPSHI_R1,
             "message": "AI returned an unexpected response format. Please retry."
         }
 
