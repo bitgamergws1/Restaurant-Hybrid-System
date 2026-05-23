@@ -1,7 +1,6 @@
-# backend/routes/tables.py
 from flask import Blueprint, request
 from extensions import get_db
-from middleware.auth_middleware import require_admin
+from middleware.auth_middleware import require_auth, require_admin
 from utils.response import success_response, error_response
 from utils.validators import validate_uuid
 import uuid
@@ -9,6 +8,21 @@ import uuid
 tables_bp = Blueprint("tables", __name__)
 
 
+# ── Customer-facing: fetch all non-inactive tables ────────────────────────────
+@tables_bp.route("/available", methods=["GET"], strict_slashes=False)
+@require_auth
+def get_available_tables():
+    db = get_db()
+    result = db.table("restaurant_tables") \
+        .select("id, table_number, capacity, floor, status") \
+        .neq("status", "inactive") \
+        .order("table_number") \
+        .execute()
+    tables = result.data or []
+    return success_response({"tables": tables, "count": len(tables)}, "Tables fetched", 200)
+
+
+# ── Admin: all tables ─────────────────────────────────────────────────────────
 @tables_bp.route("/", methods=["GET"], strict_slashes=False)
 @require_admin
 def get_tables():
