@@ -1,3 +1,4 @@
+# backend/routes/tables.py
 from flask import Blueprint, request
 from extensions import get_db
 from middleware.auth_middleware import require_admin
@@ -5,7 +6,7 @@ from utils.response import success_response, error_response
 from utils.validators import validate_uuid
 import uuid
 
-tables_bp = Blueprint("tables", __name__)
+tables_bp = Blueprint("tables", __name__, strict_slashes=False)
 
 
 @tables_bp.route("/", methods=["GET"])
