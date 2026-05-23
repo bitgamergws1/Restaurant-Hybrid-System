@@ -30,8 +30,7 @@ def _create_session(user_id: str) -> str:
     return token
 
 
-# signup
-@auth_bp.route("/signup", methods=["POST"])
+@auth_bp.route("/signup", methods=["POST"], strict_slashes=False)
 def signup():
     data = request.get_json(silent=True)
     if not data:
@@ -80,8 +79,7 @@ def signup():
     return success_response({"email": email}, "OTP sent to your email. Please verify to complete registration.", 201)
 
 
-# verify otp
-@auth_bp.route("/verify-otp", methods=["POST"])
+@auth_bp.route("/verify-otp", methods=["POST"], strict_slashes=False)
 def verify_otp_route():
     data = request.get_json(silent=True)
     if not data:
@@ -152,8 +150,7 @@ def verify_otp_route():
     return success_response({"email": email}, "OTP verified. Proceed to reset your password.", 200)
 
 
-# resend otp
-@auth_bp.route("/resend-otp", methods=["POST"])
+@auth_bp.route("/resend-otp", methods=["POST"], strict_slashes=False)
 def resend_otp():
     data = request.get_json(silent=True)
     if not data:
@@ -194,8 +191,7 @@ def resend_otp():
     return success_response({"email": email}, "OTP resent successfully.", 200)
 
 
-# login
-@auth_bp.route("/login", methods=["POST"])
+@auth_bp.route("/login", methods=["POST"], strict_slashes=False)
 def login():
     data = request.get_json(silent=True)
     if not data:
@@ -243,8 +239,7 @@ def login():
     )
 
 
-# logout
-@auth_bp.route("/logout", methods=["POST"])
+@auth_bp.route("/logout", methods=["POST"], strict_slashes=False)
 def logout():
     token = request.headers.get("X-Session-Token", "").strip()
     if not token:
@@ -254,8 +249,7 @@ def logout():
     return success_response({}, "Logged out successfully", 200)
 
 
-# forgot password
-@auth_bp.route("/forgot-password", methods=["POST"])
+@auth_bp.route("/forgot-password", methods=["POST"], strict_slashes=False)
 def forgot_password():
     data = request.get_json(silent=True)
     if not data:
@@ -278,8 +272,7 @@ def forgot_password():
     return success_response({}, "If an account with that email exists, a reset OTP has been sent.", 200)
 
 
-# reset password
-@auth_bp.route("/reset-password", methods=["POST"])
+@auth_bp.route("/reset-password", methods=["POST"], strict_slashes=False)
 def reset_password():
     data = request.get_json(silent=True)
     if not data:
