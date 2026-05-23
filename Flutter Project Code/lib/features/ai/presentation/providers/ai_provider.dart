@@ -1,5 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/ai_repository.dart';
+import '../../../menu/data/menu_repository.dart';
+import '../../../menu/domain/models/menu_item_model.dart';
 
 // ── Chat message model ────────────────────────────────────────────────────────
 
@@ -12,6 +14,7 @@ final class ChatMessage {
     required this.text,
     required this.timestamp,
     this.isLoading = false,
+    this.suggestedItems = const [],
   });
 
   final String id;
@@ -20,12 +23,16 @@ final class ChatMessage {
   final DateTime timestamp;
   final bool isLoading;
 
+  /// Menu items extracted from the AI response — rendered as tappable cards.
+  final List<MenuItemModel> suggestedItems;
+
   bool get isUser => role == MessageRole.user;
   bool get isAssistant => role == MessageRole.assistant;
 
   ChatMessage copyWith({
     String? text,
     bool? isLoading,
+    List<MenuItemModel>? suggestedItems,
   }) =>
       ChatMessage(
         id: id,
@@ -33,11 +40,24 @@ final class ChatMessage {
         text: text ?? this.text,
         timestamp: timestamp,
         isLoading: isLoading ?? this.isLoading,
+        suggestedItems: suggestedItems ?? this.suggestedItems,
       );
+}
 
-  @override
-  String toString() =>
-      'ChatMessage(role: $role, text: ${text.substring(0, text.length.clamp(0, 40))}...)';
+// ── Markdown stripper ─────────────────────────────────────────────────────────
+// The AI backend sometimes returns **bold** or *italic* markers.
+// Strip them so plain text renders cleanly in the bubble.
+
+String stripMarkdown(String text) {
+  return text
+      .replaceAllMapped(
+          RegExp(r'\*\*(.*?)\*\*', dotAll: true), (m) => m.group(1) ?? '')
+      .replaceAllMapped(
+          RegExp(r'\*(.*?)\*', dotAll: true), (m) => m.group(1) ?? '')
+      .replaceAllMapped(
+          RegExp(r'__(.*?)__', dotAll: true), (m) => m.group(1) ?? '')
+      .replaceAllMapped(
+          RegExp(r'_(.*?)_', dotAll: true), (m) => m.group(1) ?? '');
 }
 
 // ── Chat state ────────────────────────────────────────────────────────────────
@@ -76,15 +96,15 @@ final class AiChatNotifier extends AutoDisposeNotifier<AiChatState> {
 
   @override
   AiChatState build() {
-    // Seed with a welcome message from the AI waiter.
     return AiChatState(
       messages: [
         ChatMessage(
           id: _nextId(),
           role: MessageRole.assistant,
-          text: 'Hello! I am your AI Waiter at Spice Route.\n\n'
-              'Tell me what you are in the mood for — spicy, mild, vegetarian, '
-              'something light — and I will recommend the perfect dishes for you.',
+          text: 'Hello! I\'m your AI Waiter at Spice Route.\n\n'
+              'Tell me what you are in the mood for — spicy, mild, '
+              'vegetarian, something light — and I\'ll recommend '
+              'the perfect dishes for you.',
           timestamp: DateTime.now(),
         ),
       ],
@@ -92,14 +112,48 @@ final class AiChatNotifier extends AutoDisposeNotifier<AiChatState> {
   }
 
   AiRepository get _repo => ref.read(aiRepositoryProvider);
+  MenuRepository get _menuRepo => ref.read(menuRepositoryProvider);
 
   static String _nextId() => 'msg_${++_idCounter}';
+
+  // ── Extract menu items mentioned in the AI response ──────────────────────
+
+  Future<List<MenuItemModel>> _extractSuggestedItems(String cleanText) async {
+    try {
+      final allItems = await _menuRepo.getMenu();
+      final lower = cleanText.toLowerCase();
+
+      // 1. Direct name match (highest confidence)
+      final direct = allItems
+          .where((item) => lower.contains(item.name.toLowerCase()))
+          .toList();
+
+      if (direct.isNotEmpty) {
+        return direct.take(5).toList();
+      }
+
+      // 2. Word-level partial match as fallback
+      final words = lower
+          .split(RegExp(r'[\s,।\-\(\)]+'))
+          .where((w) => w.length > 3)
+          .toSet();
+
+      return allItems
+          .where(
+              (item) => words.any((w) => item.name.toLowerCase().contains(w)))
+          .take(5)
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  // ── Send message ─────────────────────────────────────────────────────────
 
   Future<void> sendMessage(String text) async {
     final trimmed = text.trim();
     if (trimmed.isEmpty || state.isSending) return;
 
-    // Append user message.
     final userMsg = ChatMessage(
       id: _nextId(),
       role: MessageRole.user,
@@ -107,7 +161,6 @@ final class AiChatNotifier extends AutoDisposeNotifier<AiChatState> {
       timestamp: DateTime.now(),
     );
 
-    // Append a loading placeholder for the assistant.
     final loadingMsg = ChatMessage(
       id: _nextId(),
       role: MessageRole.assistant,
@@ -124,14 +177,23 @@ final class AiChatNotifier extends AutoDisposeNotifier<AiChatState> {
 
     final result = await _repo.getRecommendation(trimmed);
 
-    // Replace loading placeholder with actual response.
+    // Strip markdown from raw AI response before storing.
+    final rawText = result.success && result.recommendation != null
+        ? result.recommendation!
+        : (result.error ?? 'Something went wrong. Please try again.');
+    final cleanText = stripMarkdown(rawText);
+
+    // Extract matching menu items using the clean (no asterisks) text.
+    final suggested = result.success
+        ? await _extractSuggestedItems(cleanText)
+        : <MenuItemModel>[];
+
     final updatedMessages = state.messages.map((m) {
       if (m.id == loadingMsg.id) {
         return m.copyWith(
-          text: result.success && result.recommendation != null
-              ? result.recommendation!
-              : (result.error ?? 'Something went wrong. Please try again.'),
+          text: cleanText,
           isLoading: false,
+          suggestedItems: suggested,
         );
       }
       return m;
@@ -153,7 +215,7 @@ final aiChatProvider = AutoDisposeNotifierProvider<AiChatNotifier, AiChatState>(
   AiChatNotifier.new,
 );
 
-// ── Complaint triage state ────────────────────────────────────────────────────
+// ── Complaint triage ──────────────────────────────────────────────────────────
 
 sealed class TriageState {
   const TriageState();
@@ -196,10 +258,7 @@ final class TriageNotifier extends AutoDisposeNotifier<TriageState> {
         );
 
     if (result.success && result.triage != null) {
-      state = TriageSuccess(
-        complaintId: null,
-        triage: result.triage!,
-      );
+      state = TriageSuccess(complaintId: null, triage: result.triage!);
     } else {
       state = TriageError(
         result.error ?? 'Could not submit complaint. Please try again.',
