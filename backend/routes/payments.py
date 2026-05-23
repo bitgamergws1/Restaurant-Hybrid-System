@@ -9,8 +9,7 @@ from utils.validators import validate_required_fields, validate_uuid
 payments_bp = Blueprint("payments", __name__)
 
 
-# mock razorpay payment verification
-@payments_bp.route("/verify", methods=["POST"])
+@payments_bp.route("/verify", methods=["POST"], strict_slashes=False)
 @require_auth
 def verify_payment():
     data = request.get_json(silent=True)
@@ -43,7 +42,6 @@ def verify_payment():
     if order["payment_status"] == "paid":
         return error_response("Payment already verified for this order", 409)
 
-    # mock verification: in test mode, all razorpay IDs starting with 'pay_' and 'order_' are accepted
     mock_valid = (
         razorpay_payment_id.startswith("pay_")
         and razorpay_order_id.startswith("order_")
@@ -92,8 +90,7 @@ def verify_payment():
     )
 
 
-# send invoice email for a paid order
-@payments_bp.route("/invoice/<order_id>", methods=["POST"])
+@payments_bp.route("/invoice/<order_id>", methods=["POST"], strict_slashes=False)
 @require_auth
 def send_invoice(order_id):
     if not validate_uuid(order_id):
