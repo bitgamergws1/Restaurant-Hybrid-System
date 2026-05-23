@@ -9,7 +9,7 @@ import '../../features/cart/presentation/providers/cart_provider.dart';
 /// ─────────────────────────────────────────────────────────────────────────────
 /// AppNavShell
 /// Web (>= 800 px): permanent left sidebar (220 px)
-/// Mobile (< 800 px): bottom NavigationBar + cart FAB
+/// Mobile (< 800 px): bottom NavigationBar + fixed top-right cart button
 ///
 /// Branch index map (matches app_router.dart):
 ///   0 → Home   1 → Menu   2 → Orders   3 → AI Chef   4 → Profile
@@ -39,7 +39,6 @@ class AppNavShell extends ConsumerWidget {
         label: 'Profile'),
   ];
 
-  // Branch index aligns exactly with _destinations index
   void _tap(int i) =>
       shell.goBranch(i, initialLocation: i == shell.currentIndex);
 
@@ -271,7 +270,7 @@ class _WebLayout extends StatelessWidget {
       );
 }
 
-// ── Mobile bottom nav ────────────────────────────────────────────────────────
+// ── Mobile bottom nav ─────────────────────────────────────────────────────────
 
 class _MobileLayout extends StatelessWidget {
   const _MobileLayout({
@@ -289,73 +288,113 @@ class _MobileLayout extends StatelessWidget {
   final int cartCount;
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-        backgroundColor: AppColors.background,
-        body: shell,
-        floatingActionButton: cartCount > 0
-            ? FloatingActionButton.extended(
-                onPressed: () => context.push('/cart'),
-                backgroundColor: AppColors.primary,
-                elevation: 0,
-                icon: const Icon(
-                  Icons.shopping_cart_rounded,
-                  color: Colors.white,
-                  size: 18,
-                ),
-                label: Text(
-                  'Cart  ($cartCount)',
-                  style: GoogleFonts.syne(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white,
+  Widget build(BuildContext context) {
+    final topPad = MediaQuery.of(context).padding.top;
+
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      // ── Fixed top-right cart button ─────────────────────────────────────
+      // Rendered as a Stack overlay so it appears above every screen's AppBar.
+      body: Stack(
+        children: [
+          shell,
+          if (cartCount > 0)
+            Positioned(
+              top: topPad + 10,
+              right: 12,
+              child: _TopCartButton(cartCount: cartCount),
+            ),
+        ],
+      ),
+      bottomNavigationBar: Container(
+        decoration: const BoxDecoration(
+          color: AppColors.surface,
+          border: Border(
+            top: BorderSide(color: AppColors.border),
+          ),
+        ),
+        child: SafeArea(
+          child: SizedBox(
+            height: 60,
+            child: Row(
+              children: List.generate(dests.length, (i) {
+                final on = i == idx;
+
+                return Expanded(
+                  child: GestureDetector(
+                    onTap: () => onTap(i),
+                    behavior: HitTestBehavior.opaque,
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          on ? dests[i].active : dests[i].icon,
+                          color: on ? AppColors.primary : AppColors.textMuted,
+                          size: 22,
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          dests[i].label,
+                          style: GoogleFonts.dmSans(
+                            fontSize: 10,
+                            fontWeight: on ? FontWeight.w600 : FontWeight.w400,
+                            color: on ? AppColors.primary : AppColors.textMuted,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-              )
-            : null,
-        bottomNavigationBar: Container(
-          decoration: const BoxDecoration(
-            color: AppColors.surface,
-            border: Border(
-              top: BorderSide(color: AppColors.border),
+                );
+              }),
             ),
           ),
-          child: SafeArea(
-            child: SizedBox(
-              height: 60,
-              child: Row(
-                children: List.generate(dests.length, (i) {
-                  final on = i == idx;
+        ),
+      ),
+    );
+  }
+}
 
-                  return Expanded(
-                    child: GestureDetector(
-                      onTap: () => onTap(i),
-                      behavior: HitTestBehavior.opaque,
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            on ? dests[i].active : dests[i].icon,
-                            color: on ? AppColors.primary : AppColors.textMuted,
-                            size: 22,
-                          ),
-                          const SizedBox(height: 3),
-                          Text(
-                            dests[i].label,
-                            style: GoogleFonts.dmSans(
-                              fontSize: 10,
-                              fontWeight:
-                                  on ? FontWeight.w600 : FontWeight.w400,
-                              color:
-                                  on ? AppColors.primary : AppColors.textMuted,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                }),
+// ── Fixed top-right cart button ───────────────────────────────────────────────
+
+class _TopCartButton extends StatelessWidget {
+  const _TopCartButton({required this.cartCount});
+  final int cartCount;
+
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+        onTap: () => context.push('/cart'),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+          decoration: BoxDecoration(
+            gradient: AppColors.primaryGradient,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.primary.withValues(alpha: 0.40),
+                blurRadius: 12,
+                offset: const Offset(0, 4),
               ),
-            ),
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.shopping_cart_rounded,
+                color: Colors.white,
+                size: 16,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                '$cartCount',
+                style: GoogleFonts.syne(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.white,
+                ),
+              ),
+            ],
           ),
         ),
       );
