@@ -3,6 +3,7 @@ from extensions import get_db
 from middleware.auth_middleware import require_auth, require_admin
 from services.billing_service import calculate_bill
 from services.postal_service import lookup_pincode, build_delivery_address
+from services.email_service import send_delivery_confirmation_email, send_order_cancelled_email
 from utils.response import success_response, error_response
 from utils.validators import (
     validate_required_fields, validate_pincode, validate_uuid
@@ -10,15 +11,24 @@ from utils.validators import (
 
 orders_bp = Blueprint("orders", __name__)
 
+# ── Status transition map ─────────────────────────────────────────────────────
+# KEY CHANGE: "delivered" is now reachable from ALL active stages.
+# This lets admin jump directly to delivered if they forgot to update intermediate steps.
+# Only terminal states (delivered, cancelled) have no outgoing transitions.
+
 VALID_STATUS_TRANSITIONS = {
-    "pending":          {"confirmed", "cancelled"},
-    "confirmed":        {"preparing", "cancelled"},
-    "preparing":        {"ready"},
+    "pending":          {"confirmed", "cancelled", "delivered"},
+    "confirmed":        {"preparing", "cancelled", "delivered"},
+    "preparing":        {"ready", "delivered"},
     "ready":            {"out_for_delivery", "delivered"},
     "out_for_delivery": {"delivered"},
     "delivered":        set(),
-    "cancelled":        set()
+    "cancelled":        set(),
+    "rejected":         set(),
 }
+
+# Statuses that a user (non-admin) is allowed to cancel from
+USER_CANCELLABLE_STATUSES = {"pending", "confirmed"}
 
 
 @orders_bp.route("/", methods=["POST"], strict_slashes=False)
@@ -219,24 +229,105 @@ def update_order_status(order_id):
         return error_response("status field is required", 400)
 
     db = get_db()
-    order_result = db.table("orders").select("id, status").eq("id", order_id).execute()
+    order_result = db.table("orders").select("*").eq("id", order_id).execute()
 
     if not order_result.data:
         return error_response("Order not found", 404)
 
-    current_status = order_result.data[0]["status"]
+    order = order_result.data[0]
+    current_status = order["status"]
     allowed_next = VALID_STATUS_TRANSITIONS.get(current_status, set())
 
     if new_status not in allowed_next:
         return error_response(
             f"Invalid status transition. '{current_status}' cannot move to '{new_status}'. "
-            f"Allowed: {', '.join(allowed_next) if allowed_next else 'none'}",
+            f"Allowed: {', '.join(sorted(allowed_next)) if allowed_next else 'none (terminal state)'}",
             400
         )
 
     result = db.table("orders").update({"status": new_status}).eq("id", order_id).execute()
+    updated_order = result.data[0]
 
-    return success_response({"order": result.data[0]}, "Order status updated successfully", 200)
+    # ── Auto-send delivery confirmation email when order is marked delivered ──
+    if new_status == "delivered":
+        try:
+            user_result = db.table("users").select("email, name").eq("id", order["user_id"]).execute()
+            if user_result.data:
+                u = user_result.data[0]
+                send_delivery_confirmation_email(
+                    to_address=u["email"],
+                    user_name=u["name"],
+                    order=updated_order
+                )
+        except Exception as e:
+            # Non-fatal: log but don't fail the status update
+            print(f"[orders] Delivery email failed for order {order_id}: {e}")
+
+    return success_response(
+        {"order": updated_order},
+        "Order status updated successfully",
+        200
+    )
+
+
+@orders_bp.route("/<order_id>/cancel", methods=["POST"], strict_slashes=False)
+@require_auth
+def cancel_order(order_id):
+    """
+    User-facing order cancellation.
+    Only allowed while order is in 'pending' or 'confirmed' state.
+    Admin cancellations go through the PATCH /status endpoint.
+    """
+    if not validate_uuid(order_id):
+        return error_response("Invalid order ID format", 400)
+
+    db = get_db()
+    user = request.current_user
+
+    order_result = db.table("orders").select("*").eq("id", order_id).execute()
+    if not order_result.data:
+        return error_response("Order not found", 404)
+
+    order = order_result.data[0]
+
+    # Ownership check — users can only cancel their own orders
+    if order["user_id"] != user["id"]:
+        return error_response("Access denied. This order does not belong to you.", 403)
+
+    current_status = order["status"]
+
+    if current_status in ("delivered", "cancelled", "rejected"):
+        return error_response(
+            f"This order is already {current_status} and cannot be cancelled.", 400
+        )
+
+    if current_status not in USER_CANCELLABLE_STATUSES:
+        return error_response(
+            f"Order cannot be cancelled at this stage ('{current_status}'). "
+            "It is already being prepared. Please contact the restaurant directly.",
+            400
+        )
+
+    # Cancel the order
+    result = db.table("orders").update({"status": "cancelled"}).eq("id", order_id).execute()
+    cancelled_order = result.data[0]
+
+    # ── Send cancellation confirmation email ──────────────────────────────────
+    try:
+        send_order_cancelled_email(
+            to_address=user["email"],
+            user_name=user["name"],
+            order=cancelled_order,
+            cancelled_by="user"
+        )
+    except Exception as e:
+        print(f"[orders] Cancel email failed for order {order_id}: {e}")
+
+    return success_response(
+        {"order": cancelled_order},
+        "Your order has been cancelled successfully.",
+        200
+    )
 
 
 @orders_bp.route("/<order_id>/eta", methods=["PATCH"], strict_slashes=False)
