@@ -1,7 +1,16 @@
+import 'dart:convert';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import '../../../../../core/providers/shared_preferences_provider.dart';
 import '../../../menu/domain/models/menu_item_model.dart';
 
-// ── CartItem ─────────────────────────────────────────────────────────────────
+// ── Persistence key ───────────────────────────────────────────────────────────
+
+const _kCartKey = 'spice_route_cart_v1';
+
+// ── CartItem ──────────────────────────────────────────────────────────────────
 
 final class CartItem {
   const CartItem({
@@ -31,6 +40,24 @@ final class CartItem {
         category: category,
       );
 
+  Map<String, dynamic> toJson() => {
+        'menuItemId': menuItemId,
+        'name': name,
+        'unitPrice': unitPrice,
+        'quantity': quantity,
+        'imageUrl': imageUrl,
+        'category': category,
+      };
+
+  factory CartItem.fromJson(Map<String, dynamic> j) => CartItem(
+        menuItemId: j['menuItemId'] as String,
+        name: j['name'] as String,
+        unitPrice: (j['unitPrice'] as num).toDouble(),
+        quantity: j['quantity'] as int,
+        imageUrl: j['imageUrl'] as String?,
+        category: j['category'] as String? ?? '',
+      );
+
   @override
   bool operator ==(Object other) =>
       other is CartItem && other.menuItemId == menuItemId;
@@ -43,7 +70,36 @@ final class CartItem {
 
 final class CartNotifier extends Notifier<List<CartItem>> {
   @override
-  List<CartItem> build() => [];
+  List<CartItem> build() {
+    // Load persisted cart on startup.
+    return _load(ref.read(sharedPreferencesProvider));
+  }
+
+  SharedPreferences get _prefs => ref.read(sharedPreferencesProvider);
+
+  // ── Persistence helpers ─────────────────────────────────────────────────
+
+  static List<CartItem> _load(SharedPreferences prefs) {
+    final raw = prefs.getString(_kCartKey);
+    if (raw == null) return [];
+    try {
+      final list = jsonDecode(raw) as List<dynamic>;
+      return list
+          .map((e) => CartItem.fromJson(e as Map<String, dynamic>))
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  void _save() {
+    _prefs.setString(
+      _kCartKey,
+      jsonEncode(state.map((e) => e.toJson()).toList()),
+    );
+  }
+
+  // ── Mutations ────────────────────────────────────────────────────────────
 
   void add(MenuItemModel item) {
     final idx = state.indexWhere((c) => c.menuItemId == item.id);
@@ -68,7 +124,11 @@ final class CartNotifier extends Notifier<List<CartItem>> {
         ),
       ];
     }
+    _save();
   }
+
+  /// Add by raw fields (used from AI dish cards where we have a MenuItemModel).
+  void addFromModel(MenuItemModel item) => add(item);
 
   void remove(String menuItemId) {
     final idx = state.indexWhere((c) => c.menuItemId == menuItemId);
@@ -85,13 +145,18 @@ final class CartNotifier extends Notifier<List<CartItem>> {
             state[i],
       ];
     }
+    _save();
   }
 
   void removeAll(String menuItemId) {
     state = state.where((c) => c.menuItemId != menuItemId).toList();
+    _save();
   }
 
-  void clear() => state = [];
+  void clear() {
+    state = [];
+    _save();
+  }
 }
 
 final cartProvider = NotifierProvider<CartNotifier, List<CartItem>>(
