@@ -7,7 +7,7 @@ from utils.validators import validate_uuid, validate_phone
 riders_bp = Blueprint("riders", __name__)
 
 
-@riders_bp.route("/", methods=["GET"])
+@riders_bp.route("/", methods=["GET"], strict_slashes=False)
 @require_admin
 def get_riders():
     db = get_db()
@@ -20,7 +20,7 @@ def get_riders():
     return success_response({"riders": riders, "count": len(riders)}, "Riders fetched", 200)
 
 
-@riders_bp.route("/", methods=["POST"])
+@riders_bp.route("/", methods=["POST"], strict_slashes=False)
 @require_admin
 def create_rider():
     data = request.get_json(silent=True)
@@ -52,7 +52,7 @@ def create_rider():
     return success_response({"rider": result.data[0]}, "Rider created", 201)
 
 
-@riders_bp.route("/<rider_id>", methods=["PATCH"])
+@riders_bp.route("/<rider_id>", methods=["PATCH"], strict_slashes=False)
 @require_admin
 def update_rider(rider_id):
     if not validate_uuid(rider_id):
@@ -84,7 +84,7 @@ def update_rider(rider_id):
     return success_response({"rider": result.data[0]}, "Rider updated", 200)
 
 
-@riders_bp.route("/<rider_id>", methods=["DELETE"])
+@riders_bp.route("/<rider_id>", methods=["DELETE"], strict_slashes=False)
 @require_admin
 def delete_rider(rider_id):
     if not validate_uuid(rider_id):
