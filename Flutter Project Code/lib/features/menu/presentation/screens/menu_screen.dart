@@ -7,7 +7,6 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/router/route_names.dart';
 import '../providers/menu_provider.dart';
 import '../widgets/menu_item_card.dart';
-import '../../../cart/presentation/providers/cart_provider.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 
 class MenuScreen extends ConsumerStatefulWidget {
@@ -186,6 +185,29 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
                             : w >= 500
                                 ? 2
                                 : 1;
+
+                    // ── Single-column: horizontal list cards ──────────────
+                    // Grid with childAspectRatio on narrow phones causes the
+                    // image AspectRatio(4/3) to exceed the card height → overflow
+                    // → entire card renders black. Use SliverList instead.
+                    if (cols == 1) {
+                      return SliverList(
+                        delegate: SliverChildBuilderDelegate(
+                          (ctx, i) => Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: MenuItemCard(
+                              item: items[i],
+                              horizontal: true,
+                            )
+                                .animate()
+                                .fadeIn(delay: (i * 40).ms)
+                                .slideY(begin: 0.05, delay: (i * 40).ms),
+                          ),
+                          childCount: items.length,
+                        ),
+                      );
+                    }
+
                     return SliverGrid(
                       delegate: SliverChildBuilderDelegate(
                         (ctx, i) =>
@@ -199,11 +221,7 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
                         crossAxisCount: cols,
                         crossAxisSpacing: 12,
                         mainAxisSpacing: 12,
-                        childAspectRatio: cols == 1
-                            ? 2.8
-                            : cols == 2
-                                ? 0.72
-                                : 0.68,
+                        childAspectRatio: cols == 2 ? 0.72 : 0.68,
                       ),
                     );
                   },
