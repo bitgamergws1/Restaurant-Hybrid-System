@@ -94,7 +94,13 @@ class AdminShell extends ConsumerWidget {
     final wrappedChild = PopScope(
       canPop: loc == RoutePaths.adminDashboard,
       onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) context.go(RoutePaths.adminDashboard);
+        // Run after the current frame so GoRouter state is fully settled
+        // before we issue a new navigation command.
+        if (!didPop && loc != RoutePaths.adminDashboard) {
+          Future.microtask(() {
+            if (context.mounted) context.go(RoutePaths.adminDashboard);
+          });
+        }
       },
       child: child,
     );

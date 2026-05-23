@@ -46,6 +46,10 @@ abstract final class ApiEndpoints {
   static String orderEta(String id) => '/orders/$id/eta';
   static String userOrders(String uid) => '/orders/user/$uid';
 
+  /// Customer-facing cancel — POST /orders/{id}/cancel
+  /// Only works for pending / confirmed orders.
+  static String cancelOrder(String id) => '/orders/$id/cancel';
+
   // ── Payments ─────────────────────────────────────────────────────────────────
   static const String paymentVerify = '/payments/verify';
   static String invoice(String id) => '/payments/invoice/$id';
@@ -59,8 +63,18 @@ abstract final class ApiEndpoints {
   static const String analytics = '/admin/analytics';
   static const String complaints = '/admin/complaints';
   static String complaintStatus(String id) => '/admin/complaints/$id/status';
+
+  /// Admin resolves complaint + sends email to customer.
+  static String resolveComplaint(String id) => '/admin/complaints/$id/resolve';
+
   static const String adminUsers = '/admin/users';
   static const String adminOrders = '/admin/orders';
+
+  /// Admin cancels any non-terminal order (with optional reason email).
+  static String adminCancelOrder(String id) => '/admin/orders/$id/cancel';
+
+  /// Admin sends delay notification email to customer.
+  static String notifyDelay(String id) => '/admin/orders/$id/notify-delay';
 
   // ── Tables ─────────────────────────────────────────────────────────────────
   /// Admin: all tables (requires admin/staff role)

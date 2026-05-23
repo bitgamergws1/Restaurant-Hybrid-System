@@ -7,6 +7,7 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/router/route_names.dart';
 import '../providers/menu_provider.dart';
 import '../widgets/menu_item_card.dart';
+import '../../../cart/presentation/providers/cart_provider.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 
 class MenuScreen extends ConsumerStatefulWidget {

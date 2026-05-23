@@ -42,7 +42,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
 
     if (result.success) {
       // Navigate to OTP screen in reset mode
-      context.goNamed(
+      context.pushNamed(
         RouteNames.otp,
         queryParameters: {
           'email': _emailCtrl.text.trim(),
@@ -202,7 +202,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
                     // ── Back to login ──────────────────────────────────────
                     Center(
                       child: TextButton.icon(
-                        onPressed: () => context.goNamed(RouteNames.login),
+                        onPressed: () => context.pop(),
                         icon: const Icon(
                           Icons.arrow_back_rounded,
                           size: 14,

@@ -187,22 +187,52 @@ class DashboardScreen extends ConsumerWidget {
                     Row(
                       children: [
                         _QuickAction(
-                          label: 'View Orders',
+                          label: 'Orders',
                           icon: Icons.receipt_long_outlined,
                           onTap: () => context.go(RoutePaths.adminOrders),
                         ),
-                        const SizedBox(width: 10),
+                        const SizedBox(width: 8),
                         _QuickAction(
-                          label: 'Manage Menu',
+                          label: 'Delivery',
+                          icon: Icons.delivery_dining_outlined,
+                          onTap: () => context.go(RoutePaths.adminDelivery),
+                        ),
+                        const SizedBox(width: 8),
+                        _QuickAction(
+                          label: 'Menu',
                           icon: Icons.restaurant_menu_outlined,
                           onTap: () => context.go(RoutePaths.adminMenu),
                         ),
-                        const SizedBox(width: 10),
+                        const SizedBox(width: 8),
                         _QuickAction(
                           label: 'Analytics',
                           icon: Icons.bar_chart_rounded,
                           onTap: () => context.go(RoutePaths.adminAnalytics),
                         ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        _QuickAction(
+                          label: 'Tables',
+                          icon: Icons.table_restaurant_outlined,
+                          onTap: () => context.go(RoutePaths.adminTables),
+                        ),
+                        const SizedBox(width: 8),
+                        _QuickAction(
+                          label: 'Riders',
+                          icon: Icons.two_wheeler_outlined,
+                          onTap: () => context.go(RoutePaths.adminRiders),
+                        ),
+                        const SizedBox(width: 8),
+                        _QuickAction(
+                          label: 'Complaints',
+                          icon: Icons.report_problem_outlined,
+                          onTap: () => context.go(RoutePaths.adminComplaints),
+                        ),
+                        const SizedBox(width: 8),
+                        const Expanded(child: SizedBox()),
                       ],
                     ),
                   ],

@@ -94,6 +94,28 @@ final class OrdersRepository {
         .toList();
   }
 
+  // ── Cancel order (customer-facing) ─────────────────────────────────────────
+  // Only succeeds for orders in 'pending' or 'confirmed' state.
+  // Backend returns 400 if the order is already being prepared.
+
+  Future<({bool success, OrderModel? order, String? error})> cancelOrder(
+    String orderId,
+  ) async {
+    try {
+      final data = await _client.post(ApiEndpoints.cancelOrder(orderId));
+      final order = OrderModel.fromJson(data['order'] as Map<String, dynamic>);
+      return (success: true, order: order, error: null);
+    } on ApiException catch (e) {
+      return (success: false, order: null, error: e.message);
+    } catch (_) {
+      return (
+        success: false,
+        order: null,
+        error: 'Could not cancel order. Please try again.',
+      );
+    }
+  }
+
   // ── Send invoice ────────────────────────────────────────────────────────────
 
   Future<({bool success, String? error})> sendInvoice(String orderId) async {

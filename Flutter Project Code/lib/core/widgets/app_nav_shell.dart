@@ -289,8 +289,6 @@ class _MobileLayout extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final topPad = MediaQuery.of(context).padding.top;
-
     return Scaffold(
       backgroundColor: AppColors.background,
       // ── Fixed top-right cart button ─────────────────────────────────────
@@ -298,10 +296,13 @@ class _MobileLayout extends StatelessWidget {
       body: Stack(
         children: [
           shell,
+          // ── Floating cart button — bottom-right above bottom nav ─────────
+          // Moved here (was top-right) to stop overlapping screen AppBars,
+          // including the "AI Chef" shortcut on the Menu screen.
           if (cartCount > 0)
             Positioned(
-              top: topPad + 10,
-              right: 12,
+              bottom: 70, // sits just above the 60 px bottom nav + safe area
+              right: 16,
               child: _TopCartButton(cartCount: cartCount),
             ),
         ],

@@ -18,10 +18,6 @@ DateTime _toUTC(DateTime ist) => ist.subtract(_ist);
 
 DateTime _istNow() => _toIST(DateTime.now().toUtc());
 
-/// Returns UTC start of the given IST day (IST midnight → UTC).
-DateTime _istDayStartUTC(DateTime istDay) =>
-    _toUTC(DateTime(istDay.year, istDay.month, istDay.day));
-
 String _istDateKey(DateTime utc) {
   final ist = _toIST(utc);
   return '${ist.year}-${ist.month.toString().padLeft(2, '0')}-${ist.day.toString().padLeft(2, '0')}';
@@ -186,9 +182,6 @@ class _ChartData {
 
     // ── Convert maps to FlSpot lists ──────────────────────────────────────
     final keys = revenueMap.keys.toList()..sort();
-
-    FlSpot toSpot(Map<String, dynamic> map, String k, int i) =>
-        FlSpot(i.toDouble(), (map[k] as num?)?.toDouble() ?? 0);
 
     final revenueTrend = keys
         .asMap()

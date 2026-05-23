@@ -8,11 +8,12 @@ import '../providers/admin_providers.dart';
 // AdminOrdersScreen
 // All orders with filter bar + status update actions.
 //
-// UX fixes applied:
+// Features:
 //   1. Confirmation dialog before every status change.
 //   2. SnackBar on success and failure.
 //   3. Per-card loading indicator while update is in-flight.
-//   4. Cancel order action with a separate red button.
+//   4. Admin Cancel with reason — sends email to customer via POST /admin/orders/{id}/cancel.
+//   5. Notify Delay — sends delay notification email with message + optional ETA.
 // ─────────────────────────────────────────────────────────────────────────────
 
 class AdminOrdersScreen extends ConsumerStatefulWidget {
@@ -42,7 +43,7 @@ class _AdminOrdersScreenState extends ConsumerState<AdminOrdersScreen> {
 
   static const _types = ['', 'dine_in', 'delivery'];
 
-  // ── Status update with confirmation + feedback ───────────────────────────
+  // ── Status update ────────────────────────────────────────────────────────
 
   Future<void> _handleStatusUpdate(
     BuildContext context,
@@ -50,6 +51,12 @@ class _AdminOrdersScreenState extends ConsumerState<AdminOrdersScreen> {
     String shortId,
     String newStatus,
   ) async {
+    // Route cancel through the admin cancel endpoint (sends reason email).
+    if (newStatus == 'cancelled') {
+      await _handleAdminCancel(context, orderId, shortId);
+      return;
+    }
+
     final confirmed = await _showConfirmDialog(context, shortId, newStatus);
     if (!confirmed) return;
     if (!context.mounted) return;
@@ -79,12 +86,338 @@ class _AdminOrdersScreenState extends ConsumerState<AdminOrdersScreen> {
     }
   }
 
+  // ── Admin Cancel with reason ─────────────────────────────────────────────
+
+  Future<void> _handleAdminCancel(
+    BuildContext context,
+    String orderId,
+    String shortId,
+  ) async {
+    final reasonCtrl = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: const BorderSide(color: AppColors.border),
+        ),
+        title: Row(children: [
+          const Icon(Icons.cancel_outlined, size: 20, color: AppColors.error),
+          const SizedBox(width: 10),
+          Text(
+            'Cancel Order #$shortId?',
+            style: GoogleFonts.syne(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textPrimary,
+            ),
+          ),
+        ]),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'This will cancel the order and notify the customer via email.',
+              style: GoogleFonts.dmSans(
+                fontSize: 13,
+                color: AppColors.textSecondary,
+                height: 1.5,
+              ),
+            ),
+            const SizedBox(height: 14),
+            Text(
+              'Reason (optional)',
+              style: GoogleFonts.dmSans(
+                fontSize: 11,
+                color: AppColors.textMuted,
+                letterSpacing: 0.3,
+              ),
+            ),
+            const SizedBox(height: 6),
+            TextField(
+              controller: reasonCtrl,
+              maxLines: 2,
+              maxLength: 200,
+              style: GoogleFonts.dmSans(
+                  fontSize: 13, color: AppColors.textPrimary),
+              decoration: InputDecoration(
+                hintText: 'e.g. Out of stock, kitchen issue…',
+                hintStyle: GoogleFonts.dmSans(
+                    fontSize: 13, color: AppColors.textDisabled),
+                filled: true,
+                fillColor: AppColors.surfaceAlt,
+                contentPadding: const EdgeInsets.all(12),
+                counterStyle: GoogleFonts.dmSans(
+                    fontSize: 10, color: AppColors.textDisabled),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: const BorderSide(color: AppColors.border),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: const BorderSide(color: AppColors.border),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide:
+                      const BorderSide(color: AppColors.error, width: 1.5),
+                ),
+              ),
+            ),
+          ],
+        ),
+        actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            style: TextButton.styleFrom(foregroundColor: AppColors.textMuted),
+            child: Text('Back', style: GoogleFonts.dmSans(fontSize: 13)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.error,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8)),
+              elevation: 0,
+            ),
+            child: Text('Cancel Order',
+                style: GoogleFonts.dmSans(
+                    fontSize: 13, fontWeight: FontWeight.w600)),
+          ),
+        ],
+      ),
+    );
+
+    final reason = reasonCtrl.text.trim();
+    reasonCtrl.dispose();
+
+    if (confirmed != true) return;
+    if (!context.mounted) return;
+
+    setState(() => _updatingOrderId = orderId);
+
+    try {
+      await ref
+          .read(adminOrdersProvider.notifier)
+          .adminCancel(orderId, reason: reason.isEmpty ? null : reason);
+
+      if (!context.mounted) return;
+      _showSnackBar(
+        context,
+        'Order #$shortId cancelled. Customer notified.',
+        isError: false,
+      );
+    } catch (_) {
+      if (!context.mounted) return;
+      _showSnackBar(
+        context,
+        'Failed to cancel order #$shortId. Try again.',
+        isError: true,
+      );
+    } finally {
+      if (mounted) setState(() => _updatingOrderId = null);
+    }
+  }
+
+  // ── Notify Delay ─────────────────────────────────────────────────────────
+
+  Future<void> _handleNotifyDelay(
+    BuildContext context,
+    String orderId,
+    String shortId,
+  ) async {
+    final messageCtrl = TextEditingController();
+    final etaCtrl = TextEditingController();
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: const BorderSide(color: AppColors.border),
+        ),
+        title: Row(children: [
+          const Icon(Icons.schedule_rounded,
+              size: 20, color: AppColors.warning),
+          const SizedBox(width: 10),
+          Text(
+            'Notify Delay — #$shortId',
+            style: GoogleFonts.syne(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textPrimary,
+            ),
+          ),
+        ]),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Send a delay notification email to the customer.',
+              style: GoogleFonts.dmSans(
+                fontSize: 13,
+                color: AppColors.textSecondary,
+                height: 1.5,
+              ),
+            ),
+            const SizedBox(height: 14),
+            Text(
+              'Message *',
+              style: GoogleFonts.dmSans(
+                fontSize: 11,
+                color: AppColors.textMuted,
+                letterSpacing: 0.3,
+              ),
+            ),
+            const SizedBox(height: 6),
+            TextField(
+              controller: messageCtrl,
+              maxLines: 3,
+              maxLength: 300,
+              style: GoogleFonts.dmSans(
+                  fontSize: 13, color: AppColors.textPrimary),
+              decoration: InputDecoration(
+                hintText:
+                    'e.g. Sorry, the kitchen is running behind on your order…',
+                hintStyle: GoogleFonts.dmSans(
+                    fontSize: 12, color: AppColors.textDisabled),
+                filled: true,
+                fillColor: AppColors.surfaceAlt,
+                contentPadding: const EdgeInsets.all(12),
+                counterStyle: GoogleFonts.dmSans(
+                    fontSize: 10, color: AppColors.textDisabled),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: const BorderSide(color: AppColors.border),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: const BorderSide(color: AppColors.border),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide:
+                      const BorderSide(color: AppColors.warning, width: 1.5),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Updated ETA (minutes, optional)',
+              style: GoogleFonts.dmSans(
+                fontSize: 11,
+                color: AppColors.textMuted,
+                letterSpacing: 0.3,
+              ),
+            ),
+            const SizedBox(height: 6),
+            TextField(
+              controller: etaCtrl,
+              keyboardType: TextInputType.number,
+              style: GoogleFonts.dmSans(
+                  fontSize: 13, color: AppColors.textPrimary),
+              decoration: InputDecoration(
+                hintText: 'e.g. 30',
+                hintStyle: GoogleFonts.dmSans(
+                    fontSize: 13, color: AppColors.textDisabled),
+                filled: true,
+                fillColor: AppColors.surfaceAlt,
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: const BorderSide(color: AppColors.border),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: const BorderSide(color: AppColors.border),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide:
+                      const BorderSide(color: AppColors.warning, width: 1.5),
+                ),
+              ),
+            ),
+          ],
+        ),
+        actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            style: TextButton.styleFrom(foregroundColor: AppColors.textMuted),
+            child: Text('Cancel', style: GoogleFonts.dmSans(fontSize: 13)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.warning,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8)),
+              elevation: 0,
+            ),
+            child: Text('Send Notification',
+                style: GoogleFonts.dmSans(
+                    fontSize: 13, fontWeight: FontWeight.w600)),
+          ),
+        ],
+      ),
+    );
+
+    final message = messageCtrl.text.trim();
+    final etaText = etaCtrl.text.trim();
+    messageCtrl.dispose();
+    etaCtrl.dispose();
+
+    if (confirmed != true) return;
+    if (!context.mounted) return;
+
+    if (message.isEmpty) {
+      _showSnackBar(context, 'Please enter a message.', isError: true);
+      return;
+    }
+
+    final etaMinutes = etaText.isNotEmpty ? int.tryParse(etaText) : null;
+
+    try {
+      await ref.read(adminOrdersProvider.notifier).notifyDelay(
+            orderId,
+            message,
+            etaMinutes: etaMinutes,
+          );
+
+      if (!context.mounted) return;
+      _showSnackBar(
+        context,
+        'Delay notification sent for order #$shortId.',
+        isError: false,
+      );
+    } catch (_) {
+      if (!context.mounted) return;
+      _showSnackBar(
+        context,
+        'Failed to send notification. Try again.',
+        isError: true,
+      );
+    }
+  }
+
+  // ── Confirm dialog (non-cancel status changes) ───────────────────────────
+
   Future<bool> _showConfirmDialog(
     BuildContext context,
     String shortId,
     String newStatus,
   ) async {
-    final isCancel = newStatus == 'cancelled';
     final result = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -95,16 +428,14 @@ class _AdminOrdersScreenState extends ConsumerState<AdminOrdersScreen> {
         ),
         title: Row(
           children: [
-            Icon(
-              isCancel
-                  ? Icons.cancel_outlined
-                  : Icons.check_circle_outline_rounded,
+            const Icon(
+              Icons.check_circle_outline_rounded,
               size: 20,
-              color: isCancel ? AppColors.error : AppColors.primary,
+              color: AppColors.primary,
             ),
             const SizedBox(width: 10),
             Text(
-              isCancel ? 'Cancel Order?' : 'Update Status?',
+              'Update Status?',
               style: GoogleFonts.syne(
                 fontSize: 16,
                 fontWeight: FontWeight.w700,
@@ -130,20 +461,15 @@ class _AdminOrdersScreenState extends ConsumerState<AdminOrdersScreen> {
                   color: AppColors.primary,
                 ),
               ),
+              const TextSpan(text: ' will be marked as '),
               TextSpan(
-                text: isCancel
-                    ? ' will be cancelled. This cannot be undone.'
-                    : ' will be marked as ',
-              ),
-              if (!isCancel)
-                TextSpan(
-                  text: _formatStatus(newStatus),
-                  style: const TextStyle(
-                    color: AppColors.textPrimary,
-                    fontWeight: FontWeight.w600,
-                  ),
+                text: _formatStatus(newStatus),
+                style: const TextStyle(
+                  color: AppColors.textPrimary,
+                  fontWeight: FontWeight.w600,
                 ),
-              if (!isCancel) const TextSpan(text: '.'),
+              ),
+              const TextSpan(text: '.'),
             ],
           ),
         ),
@@ -162,7 +488,7 @@ class _AdminOrdersScreenState extends ConsumerState<AdminOrdersScreen> {
           ElevatedButton(
             onPressed: () => Navigator.of(ctx).pop(true),
             style: ElevatedButton.styleFrom(
-              backgroundColor: isCancel ? AppColors.error : AppColors.primary,
+              backgroundColor: AppColors.primary,
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
               shape: RoundedRectangleBorder(
@@ -171,7 +497,7 @@ class _AdminOrdersScreenState extends ConsumerState<AdminOrdersScreen> {
               elevation: 0,
             ),
             child: Text(
-              isCancel ? 'Cancel Order' : 'Confirm',
+              'Confirm',
               style: GoogleFonts.dmSans(
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
@@ -296,6 +622,11 @@ class _AdminOrdersScreenState extends ConsumerState<AdminOrdersScreen> {
                           order.id,
                           order.shortId,
                           newStatus,
+                        ),
+                        onNotifyDelay: () => _handleNotifyDelay(
+                          context,
+                          order.id,
+                          order.shortId,
                         ),
                       );
                     },
@@ -434,24 +765,37 @@ class _OrderCard extends StatelessWidget {
     required this.order,
     required this.isUpdating,
     required this.onStatusUpdate,
+    required this.onNotifyDelay,
   });
 
   final AdminOrderModel order;
   final bool isUpdating;
   final ValueChanged<String> onStatusUpdate;
+  final VoidCallback onNotifyDelay;
 
-  static const _nextStatus = {
-    'pending': 'confirmed',
-    'confirmed': 'preparing',
-    'preparing': 'ready',
-    'ready': 'out_for_delivery',
-    'out_for_delivery': 'delivered',
+  // Mirrors backend VALID_STATUS_TRANSITIONS — admin can jump to any allowed state,
+  // including skipping straight to 'delivered' from any active stage.
+  static const _allowedTransitions = <String, List<String>>{
+    'pending': ['confirmed', 'delivered', 'cancelled'],
+    'confirmed': ['preparing', 'delivered', 'cancelled'],
+    'preparing': ['ready', 'delivered'],
+    'ready': ['out_for_delivery', 'delivered'],
+    'out_for_delivery': ['delivered'],
+  };
+
+  // Active orders can receive delay notifications
+  static const _delayableStatuses = {
+    'pending',
+    'confirmed',
+    'preparing',
+    'ready',
+    'out_for_delivery',
   };
 
   @override
   Widget build(BuildContext context) {
-    final next = _nextStatus[order.status];
-    final canCancel = order.status == 'pending' || order.status == 'confirmed';
+    final transitions = _allowedTransitions[order.status] ?? [];
+    final canNotifyDelay = _delayableStatuses.contains(order.status);
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 200),
@@ -562,48 +906,166 @@ class _OrderCard extends StatelessWidget {
                   SizedBox(width: 10),
                   Text(
                     'Updating…',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: AppColors.textMuted,
-                    ),
+                    style: TextStyle(fontSize: 12, color: AppColors.textMuted),
                   ),
                 ],
               ),
             )
-          else if (next != null || canCancel)
-            Container(
-              decoration: const BoxDecoration(
-                border: Border(top: BorderSide(color: AppColors.border)),
-              ),
-              padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
-              child: Row(
-                children: [
-                  // Cancel button (when applicable)
-                  if (canCancel) ...[
-                    _ActionButton(
-                      label: 'Cancel',
-                      icon: Icons.close_rounded,
-                      color: AppColors.error,
-                      isSecondary: true,
-                      onTap: () => onStatusUpdate('cancelled'),
+          else ...[
+            // Status update popup
+            if (transitions.isNotEmpty)
+              Container(
+                decoration: const BoxDecoration(
+                  border: Border(top: BorderSide(color: AppColors.border)),
+                ),
+                padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                child: PopupMenuButton<String>(
+                  onSelected: onStatusUpdate,
+                  color: AppColors.surface,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    side: const BorderSide(color: AppColors.border),
+                  ),
+                  offset: const Offset(0, -8),
+                  itemBuilder: (_) => transitions.map((status) {
+                    final isCancel = status == 'cancelled';
+                    final isSkip = status == 'delivered' &&
+                        order.status != 'out_for_delivery';
+                    final color = isCancel
+                        ? AppColors.error
+                        : isSkip
+                            ? AppColors.success
+                            : AppColors.textPrimary;
+                    return PopupMenuItem<String>(
+                      value: status,
+                      child: Row(children: [
+                        Icon(_statusIcon(status), size: 16, color: color),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                isCancel
+                                    ? 'Cancel Order'
+                                    : _formatStatus(status),
+                                style: GoogleFonts.dmSans(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: color,
+                                ),
+                              ),
+                              if (isCancel)
+                                Text(
+                                  'Sends email with reason',
+                                  style: GoogleFonts.dmSans(
+                                    fontSize: 10,
+                                    color: AppColors.textMuted,
+                                  ),
+                                )
+                              else if (isSkip)
+                                Text(
+                                  'Skip intermediate steps',
+                                  style: GoogleFonts.dmSans(
+                                    fontSize: 10,
+                                    color: AppColors.textMuted,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ]),
+                    );
+                  }).toList(),
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                          color: AppColors.primary.withValues(alpha: 0.25)),
                     ),
-                    if (next != null) const SizedBox(width: 8),
-                  ],
-
-                  // Next status button
-                  if (next != null)
-                    Expanded(
-                      child: _ActionButton(
-                        label: 'Mark as ${_formatStatus(next)}',
-                        icon: _statusIcon(next),
-                        color: AppColors.primary,
-                        isSecondary: false,
-                        onTap: () => onStatusUpdate(next),
+                    child: Row(children: [
+                      const Icon(Icons.swap_horiz_rounded,
+                          size: 15, color: AppColors.primary),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Update Status',
+                        style: GoogleFonts.dmSans(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.primary,
+                        ),
                       ),
-                    ),
-                ],
+                      const Spacer(),
+                      Text(
+                        '${transitions.length} option${transitions.length > 1 ? "s" : ""}',
+                        style: GoogleFonts.dmSans(
+                          fontSize: 11,
+                          color: AppColors.textMuted,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      const Icon(Icons.expand_more_rounded,
+                          size: 16, color: AppColors.primary),
+                    ]),
+                  ),
+                ),
               ),
-            ),
+
+            // Notify Delay button — shown for all active orders
+            if (canNotifyDelay)
+              Container(
+                decoration: BoxDecoration(
+                  border: Border(
+                    top: BorderSide(
+                      color: transitions.isNotEmpty
+                          ? AppColors.border.withValues(alpha: 0.5)
+                          : AppColors.border,
+                    ),
+                  ),
+                ),
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+                child: GestureDetector(
+                  onTap: onNotifyDelay,
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: AppColors.warning.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                          color: AppColors.warning.withValues(alpha: 0.25)),
+                    ),
+                    child: Row(children: [
+                      const Icon(Icons.schedule_send_rounded,
+                          size: 15, color: AppColors.warning),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Notify Delay',
+                        style: GoogleFonts.dmSans(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.warning,
+                        ),
+                      ),
+                      const Spacer(),
+                      Text(
+                        'Email customer',
+                        style: GoogleFonts.dmSans(
+                          fontSize: 11,
+                          color: AppColors.textMuted,
+                        ),
+                      ),
+                    ]),
+                  ),
+                ),
+              ),
+          ],
         ],
       ),
     );
@@ -622,69 +1084,9 @@ class _OrderCard extends StatelessWidget {
         'ready' => Icons.done_all_rounded,
         'out_for_delivery' => Icons.two_wheeler_rounded,
         'delivered' => Icons.check_circle_outline_rounded,
+        'cancelled' => Icons.cancel_outlined,
         _ => Icons.arrow_forward_rounded,
       };
-}
-
-class _ActionButton extends StatelessWidget {
-  const _ActionButton({
-    required this.label,
-    required this.icon,
-    required this.color,
-    required this.isSecondary,
-    required this.onTap,
-  });
-
-  final String label;
-  final IconData icon;
-  final Color color;
-  final bool isSecondary;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    if (isSecondary) {
-      return OutlinedButton.icon(
-        onPressed: onTap,
-        icon: Icon(icon, size: 14),
-        label: Text(label),
-        style: OutlinedButton.styleFrom(
-          foregroundColor: color,
-          side: BorderSide(color: color.withValues(alpha: 0.4)),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
-          ),
-          textStyle: GoogleFonts.dmSans(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      );
-    }
-
-    return ElevatedButton.icon(
-      onPressed: onTap,
-      icon: Icon(icon, size: 14),
-      label: Text(
-        label,
-        style: GoogleFonts.dmSans(
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-      style: ElevatedButton.styleFrom(
-        backgroundColor: color.withValues(alpha: 0.15),
-        foregroundColor: color,
-        elevation: 0,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8),
-          side: BorderSide(color: color.withValues(alpha: 0.3)),
-        ),
-      ),
-    );
-  }
 }
 
 class _StatusBadge extends StatelessWidget {

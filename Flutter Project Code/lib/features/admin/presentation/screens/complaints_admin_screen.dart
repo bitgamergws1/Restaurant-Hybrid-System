@@ -9,6 +9,7 @@ import '../providers/admin_providers.dart';
 // ComplaintsAdminScreen
 // Full complaints management: filter by status + priority, tap for detail,
 // inline status transitions (open → in_review → resolved → closed).
+// "Resolve" is intercepted to collect a resolution message + send email.
 // ─────────────────────────────────────────────────────────────────────────────
 
 class ComplaintsAdminScreen extends ConsumerStatefulWidget {
@@ -20,9 +21,8 @@ class ComplaintsAdminScreen extends ConsumerStatefulWidget {
 }
 
 class _ComplaintsAdminScreenState extends ConsumerState<ComplaintsAdminScreen> {
-  // Filter state
-  String _statusFilter = ''; // '' = all
-  String _priorityFilter = ''; // '' = all
+  String _statusFilter = '';
+  String _priorityFilter = '';
 
   static const _statusTabs = ['All', 'Open', 'In Review', 'Resolved', 'Closed'];
   static const _statusValues = ['', 'open', 'in_review', 'resolved', 'closed'];
@@ -32,6 +32,271 @@ class _ComplaintsAdminScreenState extends ConsumerState<ComplaintsAdminScreen> {
           status: _statusFilter.isEmpty ? null : _statusFilter,
           priority: _priorityFilter.isEmpty ? null : _priorityFilter,
         );
+  }
+
+  // ── Opens the resolution message dialog and calls resolveComplaint ──────────
+  Future<void> _showResolveDialog(
+      BuildContext context, ComplaintModel complaint) async {
+    final controller = TextEditingController();
+    String selectedStatus = 'resolved';
+    bool isSending = false;
+    // Capture before any await — showDialog is itself async
+    final messenger = ScaffoldMessenger.of(context);
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => Dialog(
+          backgroundColor: AppColors.surface,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Header
+                Row(children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: AppColors.success.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(Icons.check_circle_outline_rounded,
+                        size: 18, color: AppColors.success),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Resolve Complaint',
+                            style: GoogleFonts.syne(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w800,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                          Text(
+                            '#${complaint.shortId}',
+                            style: GoogleFonts.dmMono(
+                                fontSize: 11, color: AppColors.textMuted),
+                          ),
+                        ]),
+                  ),
+                ]),
+
+                const SizedBox(height: 20),
+
+                // Complaint preview
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppColors.surfaceAlt,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: AppColors.border),
+                  ),
+                  child: Text(
+                    complaint.rawText,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.dmSans(
+                        fontSize: 12,
+                        color: AppColors.textTertiary,
+                        height: 1.5),
+                  ),
+                ),
+
+                const SizedBox(height: 16),
+
+                // Resolution message field
+                Text(
+                  'Resolution Message',
+                  style: GoogleFonts.syne(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textMuted,
+                    letterSpacing: 1.2,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: controller,
+                  maxLines: 4,
+                  minLines: 3,
+                  style: GoogleFonts.dmSans(
+                      fontSize: 13, color: AppColors.textSecondary),
+                  decoration: InputDecoration(
+                    hintText:
+                        'Describe how this was resolved and any actions taken…',
+                    hintStyle: GoogleFonts.dmSans(
+                        fontSize: 12, color: AppColors.textDisabled),
+                    filled: true,
+                    fillColor: AppColors.surfaceAlt,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: const BorderSide(color: AppColors.border),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: const BorderSide(color: AppColors.border),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: const BorderSide(color: AppColors.primary),
+                    ),
+                    contentPadding: const EdgeInsets.all(12),
+                  ),
+                ),
+
+                const SizedBox(height: 14),
+
+                // Status selector (resolved vs closed)
+                Text(
+                  'Set final status',
+                  style: GoogleFonts.syne(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textMuted,
+                    letterSpacing: 1.2,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Row(children: [
+                  _StatusToggle(
+                    label: 'Resolved',
+                    value: 'resolved',
+                    groupValue: selectedStatus,
+                    color: AppColors.success,
+                    onTap: (v) => setDialogState(() => selectedStatus = v),
+                  ),
+                  const SizedBox(width: 8),
+                  _StatusToggle(
+                    label: 'Closed',
+                    value: 'closed',
+                    groupValue: selectedStatus,
+                    color: AppColors.textMuted,
+                    onTap: (v) => setDialogState(() => selectedStatus = v),
+                  ),
+                ]),
+
+                const SizedBox(height: 8),
+                Row(children: [
+                  const Icon(Icons.mail_outline_rounded,
+                      size: 12, color: AppColors.textDisabled),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Resolution email will be sent to the customer.',
+                    style: GoogleFonts.dmSans(
+                        fontSize: 11, color: AppColors.textDisabled),
+                  ),
+                ]),
+
+                const SizedBox(height: 20),
+
+                // Actions
+                Row(children: [
+                  Expanded(
+                    child: TextButton(
+                      onPressed:
+                          isSending ? null : () => Navigator.pop(ctx, false),
+                      style: TextButton.styleFrom(
+                        foregroundColor: AppColors.textMuted,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                      child: Text('Cancel',
+                          style: GoogleFonts.dmSans(
+                              fontSize: 13, fontWeight: FontWeight.w600)),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    flex: 2,
+                    child: FilledButton(
+                      onPressed: isSending
+                          ? null
+                          : () {
+                              if (controller.text.trim().isEmpty) {
+                                ScaffoldMessenger.of(ctx).showSnackBar(
+                                  const SnackBar(
+                                    content: Text(
+                                        'Please enter a resolution message'),
+                                    backgroundColor: AppColors.error,
+                                  ),
+                                );
+                                return;
+                              }
+                              setDialogState(() => isSending = true);
+                              Navigator.pop(ctx, true);
+                            },
+                      style: FilledButton.styleFrom(
+                        backgroundColor: AppColors.success,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8)),
+                      ),
+                      child: isSending
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 2, color: Colors.white),
+                            )
+                          : Text(
+                              'Send & Resolve',
+                              style: GoogleFonts.dmSans(
+                                  fontSize: 13, fontWeight: FontWeight.w700),
+                            ),
+                    ),
+                  ),
+                ]),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      try {
+        await ref.read(adminComplaintsProvider.notifier).resolveComplaint(
+              complaint.id,
+              controller.text.trim(),
+              status: selectedStatus,
+            );
+        messenger.showSnackBar(
+          SnackBar(
+            content: Row(children: [
+              const Icon(Icons.check_circle_rounded,
+                  size: 16, color: Colors.white),
+              const SizedBox(width: 8),
+              Text(
+                'Complaint resolved & email sent',
+                style: GoogleFonts.dmSans(
+                    fontSize: 13, fontWeight: FontWeight.w600),
+              ),
+            ]),
+            backgroundColor: AppColors.success,
+            behavior: SnackBarBehavior.floating,
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          ),
+        );
+      } catch (e) {
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text('Failed to resolve: $e'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    }
+
+    controller.dispose();
   }
 
   @override
@@ -73,7 +338,6 @@ class _ComplaintsAdminScreenState extends ConsumerState<ComplaintsAdminScreen> {
                   ],
                 ),
                 const Spacer(),
-                // Priority filter chip
                 _PriorityFilterChip(
                   current: _priorityFilter,
                   onChanged: (v) {
@@ -164,7 +428,6 @@ class _ComplaintsAdminScreenState extends ConsumerState<ComplaintsAdminScreen> {
                 ]),
               ),
               data: (complaints) {
-                // Client-side priority filter (API also filters but keep sync)
                 final filtered = _priorityFilter.isEmpty
                     ? complaints
                     : complaints
@@ -199,7 +462,6 @@ class _ComplaintsAdminScreenState extends ConsumerState<ComplaintsAdminScreen> {
                   );
                 }
 
-                // Sort: critical first, then high, medium, low
                 final sorted = [...filtered]
                   ..sort((a, b) => b.priorityOrder.compareTo(a.priorityOrder));
 
@@ -209,9 +471,13 @@ class _ComplaintsAdminScreenState extends ConsumerState<ComplaintsAdminScreen> {
                   itemBuilder: (_, i) => _ComplaintCard(
                     complaint: sorted[i],
                     onTap: () => _showDetail(context, ref, sorted[i]),
-                    onStatusChange: (newStatus) => ref
-                        .read(adminComplaintsProvider.notifier)
-                        .updateStatus(sorted[i].id, newStatus),
+                    onStatusChange: (newStatus) =>
+                        ref.read(adminComplaintsProvider.notifier).updateStatus(
+                              sorted[i].id,
+                              newStatus,
+                            ),
+                    // Intercept "resolved" to open the resolution dialog
+                    onResolve: () => _showResolveDialog(context, sorted[i]),
                   ).animate().fadeIn(delay: (i * 40).ms).slideY(begin: 0.03),
                 );
               },
@@ -239,6 +505,64 @@ class _ComplaintsAdminScreenState extends ConsumerState<ComplaintsAdminScreen> {
               .updateStatus(complaint.id, newStatus);
           Navigator.pop(context);
         },
+        // Intercept "resolved" from the detail sheet too
+        onResolve: () {
+          Navigator.pop(context); // close sheet first
+          _showResolveDialog(context, complaint);
+        },
+      ),
+    );
+  }
+}
+
+// ── Status toggle for dialog ──────────────────────────────────────────────────
+
+class _StatusToggle extends StatelessWidget {
+  const _StatusToggle({
+    required this.label,
+    required this.value,
+    required this.groupValue,
+    required this.color,
+    required this.onTap,
+  });
+  final String label;
+  final String value;
+  final String groupValue;
+  final Color color;
+  final ValueChanged<String> onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final isSelected = value == groupValue;
+    return GestureDetector(
+      onTap: () => onTap(value),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color:
+              isSelected ? color.withValues(alpha: 0.12) : AppColors.surfaceAlt,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: isSelected ? color : AppColors.border,
+            width: isSelected ? 1.5 : 1,
+          ),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          if (isSelected)
+            Padding(
+              padding: const EdgeInsets.only(right: 6),
+              child: Icon(Icons.check_rounded, size: 12, color: color),
+            ),
+          Text(
+            label,
+            style: GoogleFonts.dmSans(
+              fontSize: 12,
+              fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+              color: isSelected ? color : AppColors.textTertiary,
+            ),
+          ),
+        ]),
       ),
     );
   }
@@ -337,11 +661,13 @@ class _ComplaintCard extends StatelessWidget {
     required this.complaint,
     required this.onTap,
     required this.onStatusChange,
+    required this.onResolve,
   });
 
   final ComplaintModel complaint;
   final VoidCallback onTap;
   final ValueChanged<String> onStatusChange;
+  final VoidCallback onResolve;
 
   @override
   Widget build(BuildContext context) {
@@ -366,9 +692,8 @@ class _ComplaintCard extends StatelessWidget {
           ),
         ),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          // ── Top row ──────────────────────────────────────────────────
+          // ── Top row ────────────────────────────────────────────────────
           Row(children: [
-            // Priority dot
             Container(
               width: 8,
               height: 8,
@@ -378,7 +703,6 @@ class _ComplaintCard extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 8),
-            // ID + category
             Text(
               '#${complaint.shortId}',
               style: GoogleFonts.dmMono(
@@ -392,7 +716,6 @@ class _ComplaintCard extends StatelessWidget {
               ),
             ],
             const Spacer(),
-            // Status badge
             _Badge(
               label: complaint.status.replaceAll('_', ' '),
               color: statusColor,
@@ -401,7 +724,6 @@ class _ComplaintCard extends StatelessWidget {
 
           const SizedBox(height: 10),
 
-          // ── Raw text preview ─────────────────────────────────────────
           Text(
             complaint.rawText,
             maxLines: 2,
@@ -415,37 +737,31 @@ class _ComplaintCard extends StatelessWidget {
 
           const SizedBox(height: 10),
 
-          // ── Bottom row: meta + quick action ─────────────────────────
+          // ── Bottom row ─────────────────────────────────────────────────
           Row(children: [
-            // Sentiment icon
             if (complaint.sentiment != null)
               _SentimentIcon(sentiment: complaint.sentiment!),
-
             if (complaint.sentiment != null) const SizedBox(width: 6),
-
-            // Priority badge
             if (complaint.priority != null)
               _Badge(
                 label: complaint.priority!,
                 color: priorityColor,
                 small: true,
               ),
-
             const Spacer(),
-
-            // Date
             Text(
               _formatDate(complaint.createdAt),
               style: GoogleFonts.dmSans(
                   fontSize: 10, color: AppColors.textDisabled),
             ),
-
             const SizedBox(width: 10),
 
-            // Quick status advance button
+            // Quick action button — "Resolve" opens dialog, others advance directly
             if (nextStatus != null)
               GestureDetector(
-                onTap: () => onStatusChange(nextStatus),
+                onTap: nextStatus == 'resolved'
+                    ? onResolve
+                    : () => onStatusChange(nextStatus),
                 child: Container(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -456,8 +772,13 @@ class _ComplaintCard extends StatelessWidget {
                         Border.all(color: statusColor.withValues(alpha: 0.3)),
                   ),
                   child: Row(children: [
-                    Icon(Icons.arrow_forward_rounded,
-                        size: 10, color: statusColor),
+                    Icon(
+                      nextStatus == 'resolved'
+                          ? Icons.check_circle_outline_rounded
+                          : Icons.arrow_forward_rounded,
+                      size: 10,
+                      color: statusColor,
+                    ),
                     const SizedBox(width: 4),
                     Text(
                       _nextStatusLabel(nextStatus),
@@ -491,10 +812,12 @@ class _ComplaintDetailSheet extends StatelessWidget {
   const _ComplaintDetailSheet({
     required this.complaint,
     required this.onStatusChange,
+    required this.onResolve,
   });
 
   final ComplaintModel complaint;
   final ValueChanged<String> onStatusChange;
+  final VoidCallback onResolve;
 
   static const _allStatuses = ['open', 'in_review', 'resolved', 'closed'];
 
@@ -525,7 +848,7 @@ class _ComplaintDetailSheet extends StatelessWidget {
             ),
           ),
 
-          // ── Header ────────────────────────────────────────────────────
+          // ── Header ──────────────────────────────────────────────────────
           Row(children: [
             Container(
               width: 10,
@@ -544,7 +867,6 @@ class _ComplaintDetailSheet extends StatelessWidget {
           ]),
 
           const SizedBox(height: 4),
-
           Text(
             _formatDateTime(complaint.createdAt),
             style:
@@ -553,7 +875,7 @@ class _ComplaintDetailSheet extends StatelessWidget {
 
           const SizedBox(height: 16),
 
-          // ── Badges row ─────────────────────────────────────────────────
+          // ── Badges ──────────────────────────────────────────────────────
           Wrap(spacing: 8, runSpacing: 8, children: [
             if (complaint.category != null)
               _Badge(
@@ -573,7 +895,7 @@ class _ComplaintDetailSheet extends StatelessWidget {
 
           const SizedBox(height: 20),
 
-          // ── Full text ─────────────────────────────────────────────────
+          // ── Full text ───────────────────────────────────────────────────
           Text(
             'Complaint',
             style: GoogleFonts.syne(
@@ -606,7 +928,7 @@ class _ComplaintDetailSheet extends StatelessWidget {
 
           const SizedBox(height: 24),
 
-          // ── Status transition buttons ─────────────────────────────────
+          // ── Status transitions ───────────────────────────────────────────
           Text(
             'Update Status',
             style: GoogleFonts.syne(
@@ -624,7 +946,12 @@ class _ComplaintDetailSheet extends StatelessWidget {
               final isCurrent = s == complaint.status;
               final color = _statusColor(s);
               return GestureDetector(
-                onTap: isCurrent ? null : () => onStatusChange(s),
+                // "resolved" always opens the resolution dialog
+                onTap: isCurrent
+                    ? null
+                    : s == 'resolved'
+                        ? onResolve
+                        : () => onStatusChange(s),
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 160),
                   padding:
@@ -645,9 +972,17 @@ class _ComplaintDetailSheet extends StatelessWidget {
                         padding: const EdgeInsets.only(right: 6),
                         child:
                             Icon(Icons.check_rounded, size: 12, color: color),
+                      )
+                    else if (s == 'resolved')
+                      Padding(
+                        padding: const EdgeInsets.only(right: 6),
+                        child: Icon(Icons.mail_outline_rounded,
+                            size: 12, color: color),
                       ),
                     Text(
-                      s.replaceAll('_', ' '),
+                      s == 'resolved' && !isCurrent
+                          ? 'Resolve + Email'
+                          : s.replaceAll('_', ' '),
                       style: GoogleFonts.dmSans(
                         fontSize: 12,
                         fontWeight:
@@ -662,11 +997,16 @@ class _ComplaintDetailSheet extends StatelessWidget {
           ),
 
           const SizedBox(height: 8),
-          Text(
-            'Tap a status above to move this complaint.',
-            style:
-                GoogleFonts.dmSans(fontSize: 11, color: AppColors.textDisabled),
-          ),
+          Row(children: [
+            const Icon(Icons.info_outline_rounded,
+                size: 11, color: AppColors.textDisabled),
+            const SizedBox(width: 4),
+            Text(
+              '"Resolve + Email" sends a resolution message to the customer.',
+              style: GoogleFonts.dmSans(
+                  fontSize: 11, color: AppColors.textDisabled),
+            ),
+          ]),
         ]),
       ),
     );

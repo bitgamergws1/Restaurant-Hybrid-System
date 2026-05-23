@@ -77,7 +77,18 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
             : IconButton(
                 icon: const Icon(Icons.arrow_back_ios_new_rounded,
                     color: AppColors.textPrimary, size: 18),
-                onPressed: () => context.pop(),
+                onPressed: () {
+                  // Payment can be reached via push (order-detail) OR go
+                  // (checkout after order placed). Use canPop to handle both.
+                  if (context.canPop()) {
+                    context.pop();
+                  } else {
+                    context.goNamed(
+                      RouteNames.orderDetail,
+                      pathParameters: {'id': widget.orderId},
+                    );
+                  }
+                },
               ),
         title: Text('Secure Payment',
             style: GoogleFonts.syne(

@@ -66,226 +66,231 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       }
     });
 
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      body: Stack(
-        children: [
-          // ── Background glow (top-right) ──────────────────────────────────
-          Positioned(
-            top: -120,
-            right: -80,
-            child: Container(
-              width: 320,
-              height: 320,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: RadialGradient(
-                  colors: [
-                    AppColors.primary.withValues(alpha: 0.12),
-                    Colors.transparent,
-                  ],
+    return PopScope(
+      // Login is the root auth screen — Android back should exit the app.
+      canPop: true,
+      child: Scaffold(
+        backgroundColor: AppColors.background,
+        body: Stack(
+          children: [
+            // ── Background glow (top-right) ──────────────────────────────────
+            Positioned(
+              top: -120,
+              right: -80,
+              child: Container(
+                width: 320,
+                height: 320,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: RadialGradient(
+                    colors: [
+                      AppColors.primary.withValues(alpha: 0.12),
+                      Colors.transparent,
+                    ],
+                  ),
                 ),
               ),
             ),
-          ),
 
-          SafeArea(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const SizedBox(height: 48),
+            SafeArea(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const SizedBox(height: 48),
 
-                    // ── Logo ───────────────────────────────────────────────
-                    Container(
-                      width: 52,
-                      height: 52,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: AppColors.border, width: 1),
-                        color: AppColors.surfaceAlt,
-                      ),
-                      clipBehavior: Clip.antiAlias,
-                      child: Image.asset(
-                        'assets/images/route.png',
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => const Icon(
-                          Icons.restaurant,
-                          color: AppColors.primary,
-                          size: 26,
+                      // ── Logo ───────────────────────────────────────────────
+                      Container(
+                        width: 52,
+                        height: 52,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: AppColors.border, width: 1),
+                          color: AppColors.surfaceAlt,
                         ),
-                      ),
-                    ).animate().fadeIn(duration: 400.ms).slideY(begin: -0.2),
-
-                    const SizedBox(height: 32),
-
-                    // ── Headline ───────────────────────────────────────────
-                    Text(
-                      AppStrings.welcomeBack,
-                      style: GoogleFonts.syne(
-                        fontSize: 30,
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.textPrimary,
-                        height: 1.1,
-                      ),
-                    ).animate().fadeIn(delay: 100.ms).slideY(begin: 0.2),
-
-                    const SizedBox(height: 6),
-
-                    Text(
-                      AppStrings.loginSubhead,
-                      style: GoogleFonts.dmSans(
-                        fontSize: 15,
-                        color: AppColors.textTertiary,
-                      ),
-                    ).animate().fadeIn(delay: 150.ms),
-
-                    const SizedBox(height: 40),
-
-                    // ── Email ──────────────────────────────────────────────
-                    AuthTextField(
-                      label: AppStrings.emailLabel,
-                      hint: AppStrings.emailHint,
-                      controller: _emailCtrl,
-                      focusNode: _emailFocus,
-                      keyboardType: TextInputType.emailAddress,
-                      textInputAction: TextInputAction.next,
-                      prefixIcon: Icons.alternate_email_rounded,
-                      autofillHints: const [AutofillHints.email],
-                      onFieldSubmitted: (_) =>
-                          FocusScope.of(context).requestFocus(_pwdFocus),
-                      validator: (v) {
-                        if (v == null || v.isEmpty) {
-                          return AppStrings.fieldRequired;
-                        }
-                        final re = RegExp(r'^[\w.+-]+@[\w-]+\.[\w.]+$');
-                        if (!re.hasMatch(v.trim())) {
-                          return AppStrings.invalidEmail;
-                        }
-                        return null;
-                      },
-                    ).animate().fadeIn(delay: 200.ms).slideY(begin: 0.15),
-
-                    const SizedBox(height: 20),
-
-                    // ── Password ───────────────────────────────────────────
-                    AuthTextField(
-                      label: AppStrings.passwordLabel,
-                      hint: AppStrings.passwordHint,
-                      controller: _pwdCtrl,
-                      focusNode: _pwdFocus,
-                      obscureText: true,
-                      textInputAction: TextInputAction.done,
-                      prefixIcon: Icons.lock_outline_rounded,
-                      autofillHints: const [AutofillHints.password],
-                      onFieldSubmitted: (_) => _submit(),
-                      validator: (v) {
-                        if (v == null || v.isEmpty) {
-                          return AppStrings.fieldRequired;
-                        }
-                        if (v.length < 8) return AppStrings.pwdTooShort;
-                        return null;
-                      },
-                    ).animate().fadeIn(delay: 250.ms).slideY(begin: 0.15),
-
-                    // ── Forgot password link ───────────────────────────────
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: TextButton(
-                        onPressed: () =>
-                            context.goNamed(RouteNames.forgotPassword),
-                        child: Text(
-                          AppStrings.forgotPwd,
-                          style: GoogleFonts.dmSans(
-                            fontSize: 13,
+                        clipBehavior: Clip.antiAlias,
+                        child: Image.asset(
+                          'assets/images/route.png',
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => const Icon(
+                            Icons.restaurant,
                             color: AppColors.primary,
-                            fontWeight: FontWeight.w500,
+                            size: 26,
                           ),
                         ),
-                      ),
-                    ).animate().fadeIn(delay: 300.ms),
+                      ).animate().fadeIn(duration: 400.ms).slideY(begin: -0.2),
 
-                    const SizedBox(height: 8),
+                      const SizedBox(height: 32),
 
-                    // ── Error Banner ───────────────────────────────────────
-                    if (errorMsg != null) ...[
-                      _ErrorBanner(message: errorMsg),
-                      const SizedBox(height: 16),
-                    ],
-
-                    // ── CTA ────────────────────────────────────────────────
-                    SpiceButton(
-                      label: AppStrings.signIn,
-                      onPressed: _submit,
-                      isLoading: isLoading,
-                    ).animate().fadeIn(delay: 350.ms).slideY(begin: 0.2),
-
-                    const SizedBox(height: 32),
-
-                    // ── Divider ────────────────────────────────────────────
-                    _OrDivider().animate().fadeIn(delay: 400.ms),
-
-                    const SizedBox(height: 28),
-
-                    // ── Sign up link ───────────────────────────────────────
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          AppStrings.noAccount,
-                          style: GoogleFonts.dmSans(
-                            fontSize: 14,
-                            color: AppColors.textTertiary,
-                          ),
+                      // ── Headline ───────────────────────────────────────────
+                      Text(
+                        AppStrings.welcomeBack,
+                        style: GoogleFonts.syne(
+                          fontSize: 30,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.textPrimary,
+                          height: 1.1,
                         ),
-                        TextButton(
-                          onPressed: () => context.goNamed(RouteNames.signup),
+                      ).animate().fadeIn(delay: 100.ms).slideY(begin: 0.2),
+
+                      const SizedBox(height: 6),
+
+                      Text(
+                        AppStrings.loginSubhead,
+                        style: GoogleFonts.dmSans(
+                          fontSize: 15,
+                          color: AppColors.textTertiary,
+                        ),
+                      ).animate().fadeIn(delay: 150.ms),
+
+                      const SizedBox(height: 40),
+
+                      // ── Email ──────────────────────────────────────────────
+                      AuthTextField(
+                        label: AppStrings.emailLabel,
+                        hint: AppStrings.emailHint,
+                        controller: _emailCtrl,
+                        focusNode: _emailFocus,
+                        keyboardType: TextInputType.emailAddress,
+                        textInputAction: TextInputAction.next,
+                        prefixIcon: Icons.alternate_email_rounded,
+                        autofillHints: const [AutofillHints.email],
+                        onFieldSubmitted: (_) =>
+                            FocusScope.of(context).requestFocus(_pwdFocus),
+                        validator: (v) {
+                          if (v == null || v.isEmpty) {
+                            return AppStrings.fieldRequired;
+                          }
+                          final re = RegExp(r'^[\w.+-]+@[\w-]+\.[\w.]+$');
+                          if (!re.hasMatch(v.trim())) {
+                            return AppStrings.invalidEmail;
+                          }
+                          return null;
+                        },
+                      ).animate().fadeIn(delay: 200.ms).slideY(begin: 0.15),
+
+                      const SizedBox(height: 20),
+
+                      // ── Password ───────────────────────────────────────────
+                      AuthTextField(
+                        label: AppStrings.passwordLabel,
+                        hint: AppStrings.passwordHint,
+                        controller: _pwdCtrl,
+                        focusNode: _pwdFocus,
+                        obscureText: true,
+                        textInputAction: TextInputAction.done,
+                        prefixIcon: Icons.lock_outline_rounded,
+                        autofillHints: const [AutofillHints.password],
+                        onFieldSubmitted: (_) => _submit(),
+                        validator: (v) {
+                          if (v == null || v.isEmpty) {
+                            return AppStrings.fieldRequired;
+                          }
+                          if (v.length < 8) return AppStrings.pwdTooShort;
+                          return null;
+                        },
+                      ).animate().fadeIn(delay: 250.ms).slideY(begin: 0.15),
+
+                      // ── Forgot password link ───────────────────────────────
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton(
+                          onPressed: () =>
+                              context.pushNamed(RouteNames.forgotPassword),
                           child: Text(
-                            AppStrings.signUpLink,
+                            AppStrings.forgotPwd,
                             style: GoogleFonts.dmSans(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w700,
+                              fontSize: 13,
                               color: AppColors.primary,
+                              fontWeight: FontWeight.w500,
                             ),
                           ),
                         ),
+                      ).animate().fadeIn(delay: 300.ms),
+
+                      const SizedBox(height: 8),
+
+                      // ── Error Banner ───────────────────────────────────────
+                      if (errorMsg != null) ...[
+                        _ErrorBanner(message: errorMsg),
+                        const SizedBox(height: 16),
                       ],
-                    ).animate().fadeIn(delay: 450.ms),
 
-                    const SizedBox(height: 16),
+                      // ── CTA ────────────────────────────────────────────────
+                      SpiceButton(
+                        label: AppStrings.signIn,
+                        onPressed: _submit,
+                        isLoading: isLoading,
+                      ).animate().fadeIn(delay: 350.ms).slideY(begin: 0.2),
 
-                    // ── Staff access hint ──────────────────────────────────
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(
-                          Icons.shield_outlined,
-                          size: 12,
-                          color: AppColors.textDisabled,
-                        ),
-                        const SizedBox(width: 5),
-                        Text(
-                          'Staff & Admin: use your assigned credentials',
-                          style: GoogleFonts.dmSans(
-                            fontSize: 11,
+                      const SizedBox(height: 32),
+
+                      // ── Divider ────────────────────────────────────────────
+                      _OrDivider().animate().fadeIn(delay: 400.ms),
+
+                      const SizedBox(height: 28),
+
+                      // ── Sign up link ───────────────────────────────────────
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            AppStrings.noAccount,
+                            style: GoogleFonts.dmSans(
+                              fontSize: 14,
+                              color: AppColors.textTertiary,
+                            ),
+                          ),
+                          TextButton(
+                            onPressed: () =>
+                                context.pushNamed(RouteNames.signup),
+                            child: Text(
+                              AppStrings.signUpLink,
+                              style: GoogleFonts.dmSans(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.primary,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ).animate().fadeIn(delay: 450.ms),
+
+                      const SizedBox(height: 16),
+
+                      // ── Staff access hint ──────────────────────────────────
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(
+                            Icons.shield_outlined,
+                            size: 12,
                             color: AppColors.textDisabled,
                           ),
-                        ),
-                      ],
-                    ).animate().fadeIn(delay: 500.ms),
+                          const SizedBox(width: 5),
+                          Text(
+                            'Staff & Admin: use your assigned credentials',
+                            style: GoogleFonts.dmSans(
+                              fontSize: 11,
+                              color: AppColors.textDisabled,
+                            ),
+                          ),
+                        ],
+                      ).animate().fadeIn(delay: 500.ms),
 
-                    const SizedBox(height: 32),
-                  ],
+                      const SizedBox(height: 32),
+                    ],
+                  ),
                 ),
               ),
             ),
-          ),
-        ],
-      ),
-    );
+          ],
+        ),
+      ), // Scaffold
+    ); // PopScope
   }
 }
 

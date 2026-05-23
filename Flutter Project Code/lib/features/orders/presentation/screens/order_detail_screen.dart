@@ -101,10 +101,71 @@ class _OrderDetailBodyState extends ConsumerState<_OrderDetailBody> {
     ));
   }
 
+  Future<void> _cancelOrder() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text('Cancel Order?',
+            style: GoogleFonts.syne(
+                fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+        content: Text(
+          'Are you sure you want to cancel order #${widget.order.shortId}? '
+          'This action cannot be undone.',
+          style:
+              GoogleFonts.dmSans(fontSize: 14, color: AppColors.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('Keep Order',
+                style: GoogleFonts.dmSans(color: AppColors.textMuted)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text('Yes, Cancel',
+                style: GoogleFonts.dmSans(
+                    color: AppColors.error, fontWeight: FontWeight.w600)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    await ref.read(cancelOrderProvider(widget.order.id).notifier).cancel();
+
+    if (!mounted) return;
+
+    final cancelState = ref.read(cancelOrderProvider(widget.order.id));
+
+    if (cancelState is CancelOrderSuccess) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Order cancelled. A confirmation email has been sent.'),
+        backgroundColor: AppColors.success,
+        behavior: SnackBarBehavior.floating,
+      ));
+    } else if (cancelState is CancelOrderError) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(cancelState.message),
+        backgroundColor: AppColors.error,
+        behavior: SnackBarBehavior.floating,
+      ));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    // Watch the cancel state to rebuild when it changes (e.g. success refreshes order)
+    final cancelState = ref.watch(cancelOrderProvider(widget.order.id));
+    final isCancelling = cancelState is CancelOrderLoading;
+
     final order = widget.order;
     final items = widget.items;
+
+    // Show cancel button only for pending / confirmed orders
+    final canCancel = order.status == 'pending' || order.status == 'confirmed';
 
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
@@ -139,7 +200,7 @@ class _OrderDetailBodyState extends ConsumerState<_OrderDetailBody> {
             icon: Icons.payment_rounded,
             label: 'Pay Now  ·  Rs. ${order.totalAmount.toStringAsFixed(2)}',
             color: AppColors.success,
-            onTap: () => context.goNamed(
+            onTap: () => context.pushNamed(
               RouteNames.payment,
               queryParameters: {
                 'orderId': order.id,
@@ -150,7 +211,7 @@ class _OrderDetailBodyState extends ConsumerState<_OrderDetailBody> {
 
         if (!order.isPaid && !order.isCancelled) const SizedBox(height: 10),
 
-        // ── Resend receipt button (auto-sent on payment; this is a resend) ─
+        // ── Resend receipt button ────────────────────────────────────────
         if (order.isPaid)
           _ActionButton(
             icon: Icons.mark_email_read_outlined,
@@ -158,6 +219,33 @@ class _OrderDetailBodyState extends ConsumerState<_OrderDetailBody> {
             color: AppColors.info,
             onTap: _sendingInvoice ? null : _sendInvoice,
           ).animate().fadeIn(delay: 200.ms),
+
+        if (order.isPaid) const SizedBox(height: 10),
+
+        // ── Cancel order button ──────────────────────────────────────────
+        if (canCancel)
+          _ActionButton(
+            icon: isCancelling
+                ? Icons.hourglass_empty_rounded
+                : Icons.cancel_outlined,
+            label: isCancelling ? 'Cancelling...' : 'Cancel Order',
+            color: AppColors.error,
+            onTap: isCancelling ? null : _cancelOrder,
+          ).animate().fadeIn(delay: 220.ms),
+
+        if (canCancel) const SizedBox(height: 10),
+
+        // ── Contact support button (always visible for non-cancelled) ────
+        if (!order.isCancelled)
+          _ActionButton(
+            icon: Icons.support_agent_rounded,
+            label: 'Contact Support',
+            color: AppColors.textMuted,
+            onTap: () => context.pushNamed(
+              RouteNames.support,
+              queryParameters: {'orderId': order.id},
+            ),
+          ).animate().fadeIn(delay: 240.ms),
 
         const SizedBox(height: 20),
 
@@ -172,7 +260,7 @@ class _OrderDetailBodyState extends ConsumerState<_OrderDetailBody> {
           _InfoRow('Date', _formatDateTime(order.createdAt)),
           _InfoRow('Payment', order.isPaid ? 'Paid' : 'Pending',
               valueColor: order.isPaid ? AppColors.success : AppColors.warning),
-        ]).animate().fadeIn(delay: 200.ms),
+        ]).animate().fadeIn(delay: 260.ms),
 
         // ── Delivery address ────────────────────────────────────────────────
         if (order.isDelivery && order.deliveryAddress != null) ...[
@@ -181,7 +269,7 @@ class _OrderDetailBodyState extends ConsumerState<_OrderDetailBody> {
           const SizedBox(height: 10),
           _InfoCard(children: [
             _AddressBlock(address: order.deliveryAddress!),
-          ]).animate().fadeIn(delay: 250.ms),
+          ]).animate().fadeIn(delay: 280.ms),
         ],
 
         if (order.specialInstructions != null &&
@@ -200,7 +288,7 @@ class _OrderDetailBodyState extends ConsumerState<_OrderDetailBody> {
             child: Text(order.specialInstructions!,
                 style: GoogleFonts.dmSans(
                     fontSize: 13, color: AppColors.textSecondary, height: 1.5)),
-          ).animate().fadeIn(delay: 250.ms),
+          ).animate().fadeIn(delay: 280.ms),
         ],
 
         const SizedBox(height: 20),
@@ -377,23 +465,27 @@ class _ActionButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) => GestureDetector(
         onTap: onTap,
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: color.withValues(alpha: 0.3)),
+        child: AnimatedOpacity(
+          duration: const Duration(milliseconds: 200),
+          opacity: onTap == null ? 0.5 : 1.0,
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: color.withValues(alpha: 0.3)),
+            ),
+            child: Row(children: [
+              Icon(icon, color: color, size: 18),
+              const SizedBox(width: 10),
+              Text(label,
+                  style: GoogleFonts.dmSans(
+                      fontSize: 14, fontWeight: FontWeight.w600, color: color)),
+              const Spacer(),
+              Icon(Icons.arrow_forward_ios_rounded, size: 14, color: color),
+            ]),
           ),
-          child: Row(children: [
-            Icon(icon, color: color, size: 18),
-            const SizedBox(width: 10),
-            Text(label,
-                style: GoogleFonts.dmSans(
-                    fontSize: 14, fontWeight: FontWeight.w600, color: color)),
-            const Spacer(),
-            Icon(Icons.arrow_forward_ios_rounded, size: 14, color: color),
-          ]),
         ),
       );
 }

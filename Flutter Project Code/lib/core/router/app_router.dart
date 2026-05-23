@@ -28,6 +28,8 @@ import '../../features/payments/presentation/screens/payment_screen.dart';
 
 import '../../features/profile/presentation/screens/profile_screen.dart';
 
+import '../../features/support/presentation/screens/support_screen.dart';
+
 import '../../features/admin/presentation/screens/admin_shell.dart';
 import '../../features/admin/presentation/screens/dashboard_screen.dart';
 import '../../features/admin/presentation/screens/admin_orders_screen.dart';
@@ -70,13 +72,13 @@ final routerProvider = Provider<GoRouter>((ref) {
       if (!isAuthed) return onAuth ? null : RoutePaths.login;
       if (isAuthed && (onSplash || onAuth)) {
         // Role-based landing: admin/staff → admin dashboard, customer → menu
-        final user = (auth as AuthAuthenticated).user;
+        final user = auth.user;
         return user.isStaff ? RoutePaths.adminDashboard : RoutePaths.menu;
       }
 
       // Block customers from /admin/* routes entirely
       if (isAuthed) {
-        final user = (auth as AuthAuthenticated).user;
+        final user = auth.user;
         final onAdmin = loc.startsWith('/admin');
         if (onAdmin && !user.isStaff) return RoutePaths.menu;
       }
@@ -147,6 +149,17 @@ final routerProvider = Provider<GoRouter>((ref) {
                 state.uri.queryParameters['total'] ?? '0',
               ) ??
               0,
+        ),
+      ),
+
+      // ── Support (full-screen overlay, reachable from order detail or profile) ──
+      // Uses pushNamed so back button always returns to the calling screen.
+      // Optional [orderId] query param pre-selects the order in the flow.
+      GoRoute(
+        path: RoutePaths.support,
+        name: RouteNames.support,
+        builder: (_, state) => SupportScreen(
+          prefillOrderId: state.uri.queryParameters['orderId'],
         ),
       ),
 

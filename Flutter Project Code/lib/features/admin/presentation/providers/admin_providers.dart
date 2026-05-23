@@ -53,6 +53,21 @@ final class AdminOrdersNotifier extends AsyncNotifier<List<AdminOrderModel>> {
     state = await AsyncValue.guard(() => _repo.fetchAllOrders());
   }
 
+  /// Admin cancel with optional reason — triggers email to customer.
+  Future<void> adminCancel(String orderId, {String? reason}) async {
+    await _repo.adminCancelOrder(orderId, reason: reason);
+    state = await AsyncValue.guard(() => _repo.fetchAllOrders());
+  }
+
+  /// Sends a delay notification email to the customer.
+  Future<void> notifyDelay(
+    String orderId,
+    String message, {
+    int? etaMinutes,
+  }) async {
+    await _repo.notifyDelay(orderId, message, etaMinutes: etaMinutes);
+  }
+
   Future<void> assignRider(String orderId, String riderId) async {
     await _repo.assignRider(orderId, riderId);
     state = await AsyncValue.guard(() => _repo.fetchAllOrders());
@@ -213,6 +228,16 @@ final class AdminComplaintsNotifier
 
   Future<void> updateStatus(String id, String newStatus) async {
     await _repo.updateComplaintStatus(id, newStatus);
+    state = await AsyncValue.guard(_repo.fetchComplaints);
+  }
+
+  /// Resolves a complaint and sends a resolution email to the customer.
+  Future<void> resolveComplaint(
+    String id,
+    String resolutionMessage, {
+    String status = 'resolved',
+  }) async {
+    await _repo.resolveComplaint(id, resolutionMessage, status: status);
     state = await AsyncValue.guard(_repo.fetchComplaints);
   }
 }

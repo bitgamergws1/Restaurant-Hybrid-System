@@ -86,10 +86,35 @@ class ProfileScreen extends ConsumerWidget {
 
             const SizedBox(height: 24),
 
+            // ── Help & Support ────────────────────────────────────────
+            const _SectionHeader(label: 'Help & Support')
+                .animate()
+                .fadeIn(delay: 210.ms),
+            const SizedBox(height: 10),
+            _NavCard(
+              items: [
+                _NavItem(
+                  icon: Icons.support_agent_rounded,
+                  label: 'Contact Support',
+                  // Push so back button returns to profile
+                  onTap: () => context.pushNamed(RouteNames.support),
+                  iconColor: AppColors.primary,
+                ),
+                _NavItem(
+                  icon: Icons.receipt_long_outlined,
+                  label: 'Report an Issue',
+                  onTap: () => context.pushNamed(RouteNames.support),
+                  iconColor: AppColors.warning,
+                ),
+              ],
+            ).animate().fadeIn(delay: 230.ms),
+
+            const SizedBox(height: 24),
+
             // ── App info ──────────────────────────────────────────────
             const _SectionHeader(label: 'About')
                 .animate()
-                .fadeIn(delay: 220.ms),
+                .fadeIn(delay: 260.ms),
             const SizedBox(height: 10),
             _NavCard(
               items: [
@@ -109,14 +134,14 @@ class ProfileScreen extends ConsumerWidget {
                   onTap: () {},
                 ),
               ],
-            ).animate().fadeIn(delay: 240.ms),
+            ).animate().fadeIn(delay: 280.ms),
 
             const SizedBox(height: 32),
 
             // ── Logout ────────────────────────────────────────────────
             _LogoutButton(ref: ref, context: context)
                 .animate()
-                .fadeIn(delay: 300.ms),
+                .fadeIn(delay: 320.ms),
 
             const SizedBox(height: 48),
           ],
@@ -407,7 +432,9 @@ class _NavCard extends StatelessWidget {
                         horizontal: 16, vertical: 14),
                     child: Row(
                       children: [
-                        Icon(item.icon, size: 18, color: AppColors.textMuted),
+                        Icon(item.icon,
+                            size: 18,
+                            color: item.iconColor ?? AppColors.textMuted),
                         const SizedBox(width: 14),
                         Expanded(
                           child: Text(
@@ -444,11 +471,13 @@ class _NavItem {
     required this.label,
     required this.onTap,
     this.trailing,
+    this.iconColor,
   });
   final IconData icon;
   final String label;
   final VoidCallback onTap;
   final Widget? trailing;
+  final Color? iconColor;
 }
 
 // ── Logout button ─────────────────────────────────────────────────────────────

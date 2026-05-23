@@ -76,7 +76,7 @@ class CartScreen extends ConsumerWidget {
                   subtotal: subtotal,
                   gst: gst,
                   total: total,
-                  onCheckout: () => context.goNamed(RouteNames.checkout),
+                  onCheckout: () => context.pushNamed(RouteNames.checkout),
                 ),
               ],
             ),

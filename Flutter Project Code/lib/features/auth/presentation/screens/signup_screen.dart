@@ -58,7 +58,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
     // On OTP pending → navigate to OTP screen
     ref.listen<AuthState>(authNotifierProvider, (_, next) {
       if (next is AuthOtpPending) {
-        context.goNamed(
+        context.pushNamed(
           RouteNames.otp,
           queryParameters: {
             'email': next.email,
@@ -290,7 +290,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                           ),
                         ),
                         TextButton(
-                          onPressed: () => context.goNamed(RouteNames.login),
+                          onPressed: () => context.pop(),
                           child: Text(
                             AppStrings.signInLink,
                             style: GoogleFonts.dmSans(

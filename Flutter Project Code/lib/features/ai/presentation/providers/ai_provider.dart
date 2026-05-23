@@ -244,7 +244,7 @@ final class TriageNotifier extends AutoDisposeNotifier<TriageState> {
   @override
   TriageState build() => const TriageIdle();
 
-  Future<void> submit({
+  Future<TriageState> submit({
     required String text,
     String? userId,
     String? orderId,
@@ -264,6 +264,11 @@ final class TriageNotifier extends AutoDisposeNotifier<TriageState> {
         result.error ?? 'Could not submit complaint. Please try again.',
       );
     }
+
+    // Return the final state directly so callers don't need a second
+    // ref.read() after the await — which would race against AutoDispose
+    // resetting the provider back to TriageIdle when no listener is active.
+    return state;
   }
 
   void reset() => state = const TriageIdle();

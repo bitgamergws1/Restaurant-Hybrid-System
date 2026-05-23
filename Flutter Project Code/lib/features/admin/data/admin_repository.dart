@@ -69,6 +69,32 @@ final class AdminRepository {
     );
   }
 
+  /// Admin cancels an order with an optional reason — sends cancellation email.
+  /// Uses POST /admin/orders/{id}/cancel (different from the status PATCH).
+  Future<void> adminCancelOrder(String orderId, {String? reason}) async {
+    await _client.post(
+      ApiEndpoints.adminCancelOrder(orderId),
+      data: {
+        if (reason != null && reason.trim().isNotEmpty) 'reason': reason.trim(),
+      },
+    );
+  }
+
+  /// Sends a delay notification email to the customer.
+  Future<void> notifyDelay(
+    String orderId,
+    String message, {
+    int? etaMinutes,
+  }) async {
+    await _client.post(
+      ApiEndpoints.notifyDelay(orderId),
+      data: {
+        'message': message.trim(),
+        if (etaMinutes != null) 'eta_minutes': etaMinutes,
+      },
+    );
+  }
+
   /// Assigns a rider to a delivery order via PATCH /orders/:id/assign-rider
   Future<void> assignRider(String orderId, String riderId) async {
     await _client.patch(
@@ -216,6 +242,22 @@ final class AdminRepository {
     await _client.patch(
       ApiEndpoints.complaintStatus(id),
       data: {'status': status},
+    );
+  }
+
+  /// Resolves a complaint and sends resolution email to the customer.
+  /// [status] must be 'resolved' (default) or 'closed'.
+  Future<void> resolveComplaint(
+    String id,
+    String resolutionMessage, {
+    String status = 'resolved',
+  }) async {
+    await _client.post(
+      ApiEndpoints.resolveComplaint(id),
+      data: {
+        'resolution_message': resolutionMessage.trim(),
+        'status': status,
+      },
     );
   }
 

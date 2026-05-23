@@ -20,6 +20,10 @@ abstract final class RouteNames {
   static const String profile = 'profile';
   static const String aiChat = 'ai-chat';
 
+  /// Full-screen support / complaint flow.
+  /// Accepts optional [orderId] query param to pre-select an order.
+  static const String support = 'support';
+
   // ── Admin ──────────────────────────────────────────────────────────────────
   static const String admin = 'admin';
   static const String adminDashboard = 'admin-dashboard';
@@ -48,6 +52,10 @@ abstract final class RoutePaths {
   static const String orderDetail = '/home/orders/:id';
   static const String profile = '/home/profile';
   static const String aiChat = '/home/ai';
+
+  /// Full-screen overlay — navigated to with pushNamed so it sits above
+  /// whichever branch the user is currently on.
+  static const String support = '/support';
 
   // ── Admin ──────────────────────────────────────────────────────────────────
   static const String admin = '/admin';

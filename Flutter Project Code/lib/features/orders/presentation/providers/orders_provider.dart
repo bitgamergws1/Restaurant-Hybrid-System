@@ -91,3 +91,60 @@ final createOrderProvider =
     AutoDisposeNotifierProvider<CreateOrderNotifier, CreateOrderState>(
   CreateOrderNotifier.new,
 );
+
+// ── Cancel order state ────────────────────────────────────────────────────────
+// Used by order_detail_screen to show cancel button state.
+// Auto-disposed so each detail screen gets fresh state.
+
+sealed class CancelOrderState {
+  const CancelOrderState();
+}
+
+class CancelOrderIdle extends CancelOrderState {
+  const CancelOrderIdle();
+}
+
+class CancelOrderLoading extends CancelOrderState {
+  const CancelOrderLoading();
+}
+
+class CancelOrderSuccess extends CancelOrderState {
+  const CancelOrderSuccess(this.order);
+  final OrderModel order;
+}
+
+class CancelOrderError extends CancelOrderState {
+  const CancelOrderError(this.message);
+  final String message;
+}
+
+final class CancelOrderNotifier
+    extends AutoDisposeFamilyNotifier<CancelOrderState, String> {
+  @override
+  CancelOrderState build(String orderId) => const CancelOrderIdle();
+
+  Future<void> cancel() async {
+    if (state is CancelOrderLoading) return;
+    state = const CancelOrderLoading();
+
+    final result = await ref.read(ordersRepositoryProvider).cancelOrder(arg);
+
+    if (result.success && result.order != null) {
+      // Invalidate the detail provider so the UI refreshes with new status.
+      ref.invalidate(orderDetailProvider(arg));
+      // Also refresh the orders list if it's alive.
+      ref.invalidate(userOrdersProvider);
+      state = CancelOrderSuccess(result.order!);
+    } else {
+      state = CancelOrderError(result.error ?? 'Failed to cancel order');
+    }
+  }
+
+  void reset() => state = const CancelOrderIdle();
+}
+
+/// Family provider — one instance per order ID.
+final cancelOrderProvider = NotifierProvider.autoDispose
+    .family<CancelOrderNotifier, CancelOrderState, String>(
+  CancelOrderNotifier.new,
+);
