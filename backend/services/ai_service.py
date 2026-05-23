@@ -484,9 +484,9 @@ def triage_complaint(raw_text: str) -> dict:
         valid_sentiments = {"positive", "neutral", "negative", "very_negative"}
         valid_priorities = {"low", "medium", "high", "critical"}
 
-        category  = str(parsed.get("category", "")).strip()
-        sentiment = str(parsed.get("sentiment", "")).strip()
-        priority  = str(parsed.get("priority", "")).strip()
+        category  = str(parsed.get("category", "")).strip().lower().replace(' ', '_')
+        sentiment = str(parsed.get("sentiment", "")).strip().lower().replace(' ', '_')
+        priority  = str(parsed.get("priority", "")).strip().lower().replace(' ', '_')
 
         if category not in valid_categories:
             raise ValueError(f"Invalid category: {category}")
