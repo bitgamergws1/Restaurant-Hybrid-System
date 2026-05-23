@@ -7,7 +7,7 @@ from utils.validators import validate_pincode
 postal_bp = Blueprint("postal", __name__)
 
 
-@postal_bp.route("/<pin>", methods=["GET"])
+@postal_bp.route("/<pin>", methods=["GET"], strict_slashes=False)
 @require_auth
 def get_pincode_info(pin):
     pin = str(pin).strip()
