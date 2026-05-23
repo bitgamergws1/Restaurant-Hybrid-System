@@ -431,22 +431,22 @@ def get_ai_recommendation(user_prompt: str, menu_context: list) -> dict:
 
 
 def triage_complaint(raw_text: str) -> dict:
-    system = (
-        "You are a complaint triage engine. "
-        "Respond with ONLY a raw JSON object — no markdown, no backticks, no explanation:\n"
-        '{"category":"<food_quality|delivery|service|billing|hygiene|other>",'
-        '"sentiment":"<positive|neutral|negative|very_negative>",'
-        '"priority":"<low|medium|high|critical>"}\n\n'
-        "Priority rules:\n"
-        "- critical: hygiene issues, health risk, foreign objects in food\n"
-        "- high: completely wrong order, food not delivered, major billing error\n"
-        "- medium: cold food, long wait, minor missing items, rude staff\n"
-        "- low: small inconveniences, packaging issues, minor delays"
-    )
+    system = "You are a complaint classifier. Output only valid JSON."
 
     prompt = (
-        "Classify this complaint. Output ONLY the JSON, nothing else.\n\n"
-        f"Complaint: {raw_text}"
+        "Classify the complaint below using EXACTLY this JSON structure — no other keys, no markdown:\n\n"
+        '{"category":"food_quality","sentiment":"negative","priority":"medium"}\n\n'
+        "Allowed values:\n"
+        "  category : food_quality | delivery | service | billing | hygiene | other\n"
+        "  sentiment: positive | neutral | negative | very_negative\n"
+        "  priority : low | medium | high | critical\n\n"
+        "Priority guide:\n"
+        "  critical — hygiene/health risk, foreign objects\n"
+        "  high     — wrong/undelivered order, major billing error\n"
+        "  medium   — cold food, long wait, rude staff, minor missing items\n"
+        "  low      — packaging, minor delays, small inconveniences\n\n"
+        f"Complaint: {raw_text}\n\n"
+        "Reply with ONLY the JSON object, nothing else."
     )
 
     result = _call_proxy(DEEPSHI_R1, prompt, system=system, timeout=TIMEOUT_R1)
