@@ -7,8 +7,7 @@ from utils.response import success_response, error_response
 admin_bp = Blueprint("admin", __name__)
 
 
-# ── Main analytics dashboard ─────────────────────────────────────────────────
-@admin_bp.route("/analytics", methods=["GET"])
+@admin_bp.route("/analytics", methods=["GET"], strict_slashes=False)
 @require_admin
 def get_analytics():
     db = get_db()
@@ -37,7 +36,6 @@ def get_analytics():
     dine_in_count = sum(1 for o in all_orders if o["order_type"] == "dine_in")
     delivery_count = sum(1 for o in all_orders if o["order_type"] == "delivery")
 
-    # daily revenue breakdown
     daily_revenue = defaultdict(float)
     daily_order_count = defaultdict(int)
 
@@ -59,7 +57,6 @@ def get_analytics():
         reverse=True
     )
 
-    # top selling items (Pareto sort)
     order_ids = [o["id"] for o in paid_orders]
     top_items = []
 
@@ -90,7 +87,6 @@ def get_analytics():
 
         top_items = sorted_items[:20]
 
-    # complaints summary
     complaints_result = db.table("complaints").select("priority, status").execute()
     complaints_all = complaints_result.data or []
 
@@ -101,18 +97,15 @@ def get_analytics():
         complaints_by_priority[c.get("priority", "unknown")] += 1
         complaints_by_status[c.get("status", "unknown")] += 1
 
-    # menu stats
     menu_result = db.table("menu_items").select("is_available").execute()
     menu_items = menu_result.data or []
     total_menu_items = len(menu_items)
     available_menu_items = sum(1 for m in menu_items if m["is_available"])
 
-    # active tables
     tables_result = db.table("restaurant_tables").select("status").execute()
     all_tables = tables_result.data or []
     active_tables = sum(1 for t in all_tables if t["status"] == "occupied")
 
-    # pending orders count
     pending_orders = sum(1 for o in all_orders if o["status"] == "pending")
 
     return success_response(
@@ -149,8 +142,7 @@ def get_analytics():
     )
 
 
-# ── All orders with filters (admin live orders view) ─────────────────────────
-@admin_bp.route("/orders", methods=["GET"])
+@admin_bp.route("/orders", methods=["GET"], strict_slashes=False)
 @require_admin
 def get_admin_orders():
     db = get_db()
@@ -163,7 +155,6 @@ def get_admin_orders():
     except (ValueError, TypeError):
         limit = 100
 
-    # Join riders table to get rider name directly
     query = db.table("orders").select(
         "*, riders(id, name, phone)"
     ).order("created_at", desc=True).limit(limit)
@@ -183,8 +174,7 @@ def get_admin_orders():
     )
 
 
-# ── All complaints with filters ───────────────────────────────────────────────
-@admin_bp.route("/complaints", methods=["GET"])
+@admin_bp.route("/complaints", methods=["GET"], strict_slashes=False)
 @require_admin
 def get_complaints():
     db = get_db()
@@ -209,8 +199,7 @@ def get_complaints():
     )
 
 
-# ── Update complaint status ───────────────────────────────────────────────────
-@admin_bp.route("/complaints/<complaint_id>/status", methods=["PATCH"])
+@admin_bp.route("/complaints/<complaint_id>/status", methods=["PATCH"], strict_slashes=False)
 @require_admin
 def update_complaint_status(complaint_id):
     data = request.get_json(silent=True)
@@ -234,8 +223,7 @@ def update_complaint_status(complaint_id):
     return success_response({"complaint": result.data[0]}, "Complaint status updated", 200)
 
 
-# ── All users list ────────────────────────────────────────────────────────────
-@admin_bp.route("/users", methods=["GET"])
+@admin_bp.route("/users", methods=["GET"], strict_slashes=False)
 @require_admin
 def get_users():
     db = get_db()
