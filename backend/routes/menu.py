@@ -7,8 +7,7 @@ from utils.validators import validate_required_fields, validate_uuid
 menu_bp = Blueprint("menu", __name__)
 
 
-# public - get menu
-@menu_bp.route("/", methods=["GET"])
+@menu_bp.route("/", methods=["GET"], strict_slashes=False)
 def get_menu():
     db = get_db()
 
@@ -39,8 +38,7 @@ def get_menu():
     return success_response({"items": items, "count": len(items)}, "Menu fetched successfully", 200)
 
 
-# public - get all categories
-@menu_bp.route("/categories", methods=["GET"])
+@menu_bp.route("/categories", methods=["GET"], strict_slashes=False)
 def get_categories():
     db = get_db()
     result = db.table("menu_items").select("category").eq("is_available", True).execute()
@@ -48,8 +46,7 @@ def get_categories():
     return success_response({"categories": categories}, "Categories fetched", 200)
 
 
-# public - single item
-@menu_bp.route("/<item_id>", methods=["GET"])
+@menu_bp.route("/<item_id>", methods=["GET"], strict_slashes=False)
 def get_menu_item(item_id):
     if not validate_uuid(item_id):
         return error_response("Invalid item ID format", 400)
@@ -63,8 +60,7 @@ def get_menu_item(item_id):
     return success_response({"item": result.data[0]}, "Menu item fetched", 200)
 
 
-# admin - create item
-@menu_bp.route("/", methods=["POST"])
+@menu_bp.route("/", methods=["POST"], strict_slashes=False)
 @require_admin
 def create_menu_item():
     data = request.get_json(silent=True)
@@ -105,8 +101,7 @@ def create_menu_item():
     return success_response({"item": result.data[0]}, "Menu item created successfully", 201)
 
 
-# admin - partial update
-@menu_bp.route("/<item_id>", methods=["PATCH"])
+@menu_bp.route("/<item_id>", methods=["PATCH"], strict_slashes=False)
 @require_admin
 def update_menu_item(item_id):
     if not validate_uuid(item_id):
@@ -162,15 +157,13 @@ def update_menu_item(item_id):
     return success_response({"item": result.data[0]}, "Menu item updated successfully", 200)
 
 
-# admin - delete item
-@menu_bp.route("/<item_id>", methods=["DELETE"])
+@menu_bp.route("/<item_id>", methods=["DELETE"], strict_slashes=False)
 @require_admin
 def delete_menu_item(item_id):
     if not validate_uuid(item_id):
         return error_response("Invalid item ID format", 400)
 
     db = get_db()
-
     existing = db.table("menu_items").select("id").eq("id", item_id).execute()
     if not existing.data:
         return error_response("Menu item not found", 404)
