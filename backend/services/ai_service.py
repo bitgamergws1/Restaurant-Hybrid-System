@@ -15,8 +15,8 @@ DEEPSHI_R2 = "deepshi-r2"
 
 MAX_RETRIES = 1
 RETRY_WAIT = 4
-TIMEOUT_R1 = 45   # bumped from 35 — large menu context needs more time
-TIMEOUT_R2 = 90   # bumped from 70 — R2 thinking model can take 80 s
+TIMEOUT_R1 = 45
+TIMEOUT_R2 = 90
 
 _PROXY_ERROR_MARKERS = ("too slow", "timed out", "provider", "unavailable", "error:")
 
@@ -75,45 +75,27 @@ def _strip_thinking(text: str) -> str:
     if not text:
         return text
 
-    # raw SSE lines leaked into reply
     text = re.sub(r'data:\s*\{[^\n]*"reasoning_content"[^\n]*\}\s*', '', text)
     text = re.sub(r'(?m)^data:\s*\{.*?\}\s*$', '', text)
-
-    # XML-style thinking blocks
     text = re.sub(r'<think(?:ing)?>.*?</think(?:ing)?>', '', text, flags=re.DOTALL)
-
-    # orphaned reasoning_content JSON
     text = re.sub(r'\{[^{}]*"reasoning_content"\s*:[^{}]*\}', '', text)
-
-    # type:reasoning blocks
     text = re.sub(r'\{[^{}]*"type"\s*:\s*"reasoning"[^{}]*\}', '', text)
     text = re.sub(r'\{"type"\s*:\s*"reaso[^}]*', '', text)
-
-    # collapse excessive blank lines
     text = re.sub(r'\n{3,}', '\n\n', text)
     return text.strip()
 
 
-# ── FIX #2: Identity leak stripping ──────────────────────────────────────────
-# Deepshi-r1 sometimes leaks its own name/company even with a strong system
-# prompt. Strip it from the final reply before sending to the Flutter app.
-
 _IDENTITY_PATTERNS = [
-    # "Main Deepshi Flow hoon", "I am Deepshi", "I'm Deepshi" etc.
     re.compile(
         r'\b(?:main|i\'?m|i am|mera naam|my name is)\s+deepshi\s*(?:flow|r1|r2)?\b',
         re.IGNORECASE
     ),
-    # "developed by Evermind Labs", "by Evermind" etc.
     re.compile(r'\bEvermind\s*Labs?\b', re.IGNORECASE),
-    # "I am a private and uncensored AI"
     re.compile(
         r'\b(?:private|uncensored)\s+(?:AI|assistant|model)\b',
         re.IGNORECASE
     ),
-    # "ex-Google engineer", "ex-military founders"
     re.compile(r'\bex-(?:Google|military|military founders)\b', re.IGNORECASE),
-    # Any direct mention of the underlying model name
     re.compile(r'\bDeepshi(?:-R[12])?\b', re.IGNORECASE),
 ]
 
@@ -124,10 +106,36 @@ _RESTAURANT_FALLBACK = (
 
 
 def _sanitise_identity(text: str) -> str:
-    """Replace any leaked AI identity with a restaurant-appropriate response."""
     for pattern in _IDENTITY_PATTERNS:
         text = pattern.sub(Config.RESTAURANT_NAME + " AI Waiter", text)
     return text.strip()
+
+
+def _extract_json_object(text: str) -> str | None:
+    """
+    Finds the first valid JSON object { ... } containing all required triage keys.
+    Used as a fallback when the model wraps its JSON in markdown tables or prose.
+    """
+    # Try direct parse first (fastest path)
+    stripped = text.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+    try:
+        parsed = json.loads(stripped)
+        if isinstance(parsed, dict):
+            return stripped
+    except (json.JSONDecodeError, ValueError):
+        pass
+
+    # Walk through all { ... } blocks in the text (handles markdown-wrapped JSON)
+    for match in re.finditer(r'\{[^{}]+\}', text, re.DOTALL):
+        candidate = match.group(0)
+        try:
+            parsed = json.loads(candidate)
+            if isinstance(parsed, dict) and "category" in parsed:
+                return candidate
+        except (json.JSONDecodeError, ValueError):
+            continue
+
+    return None
 
 
 def _call_proxy(model: str, prompt: str, system: str = None, timeout: int = 45) -> str | None:
@@ -200,10 +208,6 @@ def _call_proxy(model: str, prompt: str, system: str = None, timeout: int = 45) 
 
 
 # ── Smart keyword-based menu selection ───────────────────────────────────────
-# Scores every menu item against the user prompt and returns the top 60
-# most relevant items (up to 40 exact-match + 20 diverse-category fallbacks).
-# This replaced the old menu_context[:50] slice that only sent the first 50
-# items by sort_order, making 650+ items invisible to the AI.
 
 _STOP_WORDS = {
     "i", "want", "need", "give", "me", "please", "something", "a", "an",
@@ -211,7 +215,6 @@ _STOP_WORDS = {
     "any", "some", "can", "you", "have", "do", "your", "my", "and", "or",
     "for", "with", "without", "not", "but", "so", "its", "it", "on",
     "new", "dish", "food", "item", "recommend", "suggest", "show",
-    # Hinglish stop words
     "kya", "hai", "koi", "mujhe", "de", "do", "bata", "chahiye", "acha",
     "accha", "theek", "main", "mein", "hoon", "ho", "ka", "ki", "ke",
     "se", "ko", "bhi", "aur", "ya", "ek", "kuch", "sab", "bahut",
@@ -267,7 +270,6 @@ _CATEGORY_ALIASES: dict[str, list[str]] = {
     "breakfast":     ["Breakfast"],
     "fast":          ["Fast Food"],
     "fastfood":      ["Fast Food"],
-    # Hinglish aliases
     "khana":         ["Veg Main Course", "Non-Veg Curries"],
     "north":         ["Veg Main Course", "Non-Veg Curries", "Mughlai", "Breads"],
     "goa":           ["Seafood", "Continental"],
@@ -287,13 +289,7 @@ def _select_menu_items(
     max_relevant: int = 40,
     max_total: int = 60
 ) -> list:
-    """
-    Score every item against the user prompt and return the most relevant ones.
-    Falls back to a spread of popular items when nothing matches well.
-    Now uses subcategory and tags (fields were missing in the old Supabase query).
-    """
     prompt_lower = user_prompt.lower()
-
     raw_tokens = re.findall(r"[a-z]+", prompt_lower)
     tokens = [t for t in raw_tokens if t not in _STOP_WORDS and len(t) > 2]
 
@@ -383,12 +379,6 @@ def get_ai_recommendation(user_prompt: str, menu_context: list) -> dict:
         for item in selected_items
     )
 
-    # ── FIX #3: Character-lock via BOTH system field AND prompt body ──────────
-    # Deepshi-r1 sometimes ignores system-only instructions and reverts to its
-    # own identity ("Deepshi Flow by Evermind Labs"). Embedding the identity
-    # rules at the top of the prompt body as well makes them impossible to miss.
-    # The system field is kept as a reinforcing layer.
-
     identity_block = (
         f"=== IDENTITY LOCK — READ THIS FIRST ===\n"
         f"You are the AI Waiter at {Config.RESTAURANT_NAME}, an Indian multi-cuisine restaurant.\n"
@@ -431,7 +421,6 @@ def get_ai_recommendation(user_prompt: str, menu_context: list) -> dict:
             "message": "AI recommendation service is currently unavailable. Please try again."
         }
 
-    # ── FIX #4: Post-process to strip any leaked identity in the reply ────────
     clean_result = _sanitise_identity(result)
 
     return {
@@ -445,8 +434,8 @@ def triage_complaint(raw_text: str) -> dict:
     system = (
         "You are a complaint triage engine for a restaurant management system. "
         "Analyse the customer complaint and classify it. "
-        "Respond with ONLY a raw JSON object — no markdown, no backticks, no explanation. "
-        "The JSON must have exactly these three keys:\n"
+        "Respond with ONLY a raw JSON object — no markdown, no backticks, no tables, no explanation. "
+        "Output EXACTLY this JSON structure and nothing else:\n"
         '{"category": "<food_quality|delivery|service|billing|hygiene|other>", '
         '"sentiment": "<positive|neutral|negative|very_negative>", '
         '"priority": "<low|medium|high|critical>"}\n\n'
@@ -457,7 +446,11 @@ def triage_complaint(raw_text: str) -> dict:
         "- low: small inconveniences, packaging issues, minor delays"
     )
 
-    prompt = f"Customer complaint: {raw_text}"
+    prompt = (
+        "Classify this complaint as a JSON object with keys: category, sentiment, priority.\n"
+        "Output ONLY the JSON — no markdown, no tables, no extra text.\n\n"
+        f"Complaint: {raw_text}"
+    )
 
     result = _call_proxy(DEEPSHI_R2, prompt, system=system, timeout=TIMEOUT_R2)
 
@@ -469,16 +462,23 @@ def triage_complaint(raw_text: str) -> dict:
             "message": "Complaint triage service is currently unavailable. Please retry."
         }
 
-    cleaned = (
-        result.strip()
-        .removeprefix("```json")
-        .removeprefix("```")
-        .removesuffix("```")
-        .strip()
-    )
+    # ── Robust JSON extraction ────────────────────────────────────────────────
+    # R2 sometimes returns a markdown table or prose instead of pure JSON.
+    # _extract_json_object() searches the entire response for the first valid
+    # { ... } block that contains the "category" key.
+    cleaned_json = _extract_json_object(result)
+
+    if not cleaned_json:
+        print(f"[ai_service] Triage parse error: no JSON found | raw: {result[:200]}")
+        return {
+            "success": False,
+            "triage": None,
+            "model_used": DEEPSHI_R2,
+            "message": "AI returned an unexpected response format. Please retry."
+        }
 
     try:
-        parsed = json.loads(cleaned)
+        parsed = json.loads(cleaned_json)
 
         valid_categories = {"food_quality", "delivery", "service", "billing", "hygiene", "other"}
         valid_sentiments = {"positive", "neutral", "negative", "very_negative"}
@@ -506,7 +506,7 @@ def triage_complaint(raw_text: str) -> dict:
         }
 
     except (json.JSONDecodeError, ValueError) as e:
-        print(f"[ai_service] Triage parse error: {e} | raw: {result[:120]}")
+        print(f"[ai_service] Triage parse error: {e} | cleaned: {cleaned_json[:120]}")
         return {
             "success": False,
             "triage": None,
