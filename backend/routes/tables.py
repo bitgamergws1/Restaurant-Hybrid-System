@@ -6,10 +6,10 @@ from utils.response import success_response, error_response
 from utils.validators import validate_uuid
 import uuid
 
-tables_bp = Blueprint("tables", __name__, strict_slashes=False)
+tables_bp = Blueprint("tables", __name__)
 
 
-@tables_bp.route("/", methods=["GET"])
+@tables_bp.route("/", methods=["GET"], strict_slashes=False)
 @require_admin
 def get_tables():
     db = get_db()
@@ -18,7 +18,7 @@ def get_tables():
     return success_response({"tables": tables, "count": len(tables)}, "Tables fetched", 200)
 
 
-@tables_bp.route("/", methods=["POST"])
+@tables_bp.route("/", methods=["POST"], strict_slashes=False)
 @require_admin
 def create_table():
     data = request.get_json(silent=True)
@@ -59,7 +59,7 @@ def create_table():
     return success_response({"table": result.data[0]}, "Table created", 201)
 
 
-@tables_bp.route("/<table_id>", methods=["PATCH"])
+@tables_bp.route("/<table_id>", methods=["PATCH"], strict_slashes=False)
 @require_admin
 def update_table(table_id):
     if not validate_uuid(table_id):
@@ -103,7 +103,7 @@ def update_table(table_id):
     return success_response({"table": result.data[0]}, "Table updated", 200)
 
 
-@tables_bp.route("/<table_id>", methods=["DELETE"])
+@tables_bp.route("/<table_id>", methods=["DELETE"], strict_slashes=False)
 @require_admin
 def delete_table(table_id):
     if not validate_uuid(table_id):
@@ -118,7 +118,7 @@ def delete_table(table_id):
     return success_response({}, "Table deleted", 200)
 
 
-@tables_bp.route("/<table_id>/regenerate-qr", methods=["POST"])
+@tables_bp.route("/<table_id>/regenerate-qr", methods=["POST"], strict_slashes=False)
 @require_admin
 def regenerate_qr(table_id):
     if not validate_uuid(table_id):
