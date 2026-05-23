@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -6,15 +7,23 @@ import '../../domain/models/menu_item_model.dart';
 import '../../../cart/presentation/providers/cart_provider.dart';
 
 class MenuItemCard extends ConsumerWidget {
-  const MenuItemCard({super.key, required this.item, this.compact = false});
+  const MenuItemCard({
+    super.key,
+    required this.item,
+    this.compact = false,
+    this.horizontal = false, // ← NEW: horizontal layout for narrow screens
+  });
   final MenuItemModel item;
   final bool compact;
+  final bool horizontal;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final cartItems = ref.watch(cartProvider);
     final inCart = cartItems.where((c) => c.menuItemId == item.id);
     final qty = inCart.isEmpty ? 0 : inCart.first.quantity;
+
+    if (horizontal) return _HorizontalCard(item: item, qty: qty, ref: ref);
 
     return Container(
       decoration: BoxDecoration(
@@ -34,100 +43,250 @@ class MenuItemCard extends ConsumerWidget {
             borderRadius: const BorderRadius.vertical(top: Radius.circular(15)),
             child: AspectRatio(
               aspectRatio: compact ? 16 / 9 : 4 / 3,
-              child: item.imageUrl != null
-                  ? Image.network(
-                      item.imageUrl!,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) =>
-                          _PlaceholderImage(item: item),
-                    )
-                  : _PlaceholderImage(item: item),
+              child: _ItemImage(item: item),
             ),
           ),
 
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Tags row
-                Row(children: [
-                  if (item.isVeg)
-                    const _TagBadge(label: 'VEG', color: AppColors.success),
-                  if (item.isSpicy) ...[
-                    if (item.isVeg) const SizedBox(width: 4),
-                    const _TagBadge(label: 'SPICY', color: AppColors.warning),
-                  ],
-                  const Spacer(),
-                  // Category
-                  Text(
-                    item.category.toUpperCase(),
-                    style: GoogleFonts.dmSans(
-                        fontSize: 9,
-                        color: AppColors.textDisabled,
-                        letterSpacing: 1.2,
-                        fontWeight: FontWeight.w600),
-                  ),
-                ]),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Tags row
+                  Row(children: [
+                    if (item.isVeg)
+                      const _TagBadge(label: 'VEG', color: AppColors.success),
+                    if (item.isSpicy) ...[
+                      if (item.isVeg) const SizedBox(width: 4),
+                      const _TagBadge(label: 'SPICY', color: AppColors.warning),
+                    ],
+                    const Spacer(),
+                    Text(
+                      item.category.toUpperCase(),
+                      style: GoogleFonts.dmSans(
+                          fontSize: 9,
+                          color: AppColors.textDisabled,
+                          letterSpacing: 1.2,
+                          fontWeight: FontWeight.w600),
+                    ),
+                  ]),
 
-                const SizedBox(height: 6),
-
-                // Name
-                Text(
-                  item.name,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.syne(
-                    fontSize: compact ? 13 : 15,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textPrimary,
-                    height: 1.2,
-                  ),
-                ),
-
-                if (!compact && item.description != null) ...[
                   const SizedBox(height: 4),
+
+                  // Name
                   Text(
-                    item.description!,
+                    item.name,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.dmSans(
-                        fontSize: 11, color: AppColors.textMuted, height: 1.4),
+                    style: GoogleFonts.syne(
+                      fontSize: compact ? 12 : 14,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textPrimary,
+                      height: 1.2,
+                    ),
+                  ),
+
+                  if (!compact && item.description != null) ...[
+                    const SizedBox(height: 3),
+                    Text(
+                      item.description!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.dmSans(
+                          fontSize: 10,
+                          color: AppColors.textMuted,
+                          height: 1.3),
+                    ),
+                  ],
+
+                  const Spacer(),
+
+                  // Price + Add button
+                  Row(
+                    children: [
+                      Text(
+                        'Rs. ${item.price.toStringAsFixed(0)}',
+                        style: GoogleFonts.syne(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.primary,
+                        ),
+                      ),
+                      const Spacer(),
+                      qty == 0
+                          ? _AddButton(
+                              onTap: () =>
+                                  ref.read(cartProvider.notifier).add(item))
+                          : _QtyControl(
+                              qty: qty,
+                              onInc: () =>
+                                  ref.read(cartProvider.notifier).add(item),
+                              onDec: () => ref
+                                  .read(cartProvider.notifier)
+                                  .remove(item.id),
+                            ),
+                    ],
                   ),
                 ],
-
-                const SizedBox(height: 10),
-
-                // Price + Add button
-                Row(
-                  children: [
-                    Text(
-                      'Rs. ${item.price.toStringAsFixed(0)}',
-                      style: GoogleFonts.syne(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.primary,
-                      ),
-                    ),
-                    const Spacer(),
-                    qty == 0
-                        ? _AddButton(
-                            onTap: () =>
-                                ref.read(cartProvider.notifier).add(item))
-                        : _QtyControl(
-                            qty: qty,
-                            onInc: () =>
-                                ref.read(cartProvider.notifier).add(item),
-                            onDec: () =>
-                                ref.read(cartProvider.notifier).remove(item.id),
-                          ),
-                  ],
-                ),
-              ],
+              ),
             ),
           ),
         ],
       ),
+    );
+  }
+}
+
+// ── Horizontal card (single-column / narrow screens) ─────────────────────────
+class _HorizontalCard extends StatelessWidget {
+  const _HorizontalCard(
+      {required this.item, required this.qty, required this.ref});
+  final MenuItemModel item;
+  final int qty;
+  final WidgetRef ref;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 100,
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: qty > 0
+              ? AppColors.primary.withValues(alpha: 0.4)
+              : AppColors.border,
+        ),
+      ),
+      child: Row(
+        children: [
+          // ── Left: square image ────────────────────────────────────────────
+          ClipRRect(
+            borderRadius:
+                const BorderRadius.horizontal(left: Radius.circular(13)),
+            child: SizedBox(
+              width: 100,
+              height: 100,
+              child: _ItemImage(item: item),
+            ),
+          ),
+
+          // ── Right: content ────────────────────────────────────────────────
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  // Top: tags + category
+                  Row(children: [
+                    if (item.isVeg)
+                      const _TagBadge(
+                          label: 'VEG', color: AppColors.success, tiny: true),
+                    if (item.isSpicy) ...[
+                      if (item.isVeg) const SizedBox(width: 3),
+                      const _TagBadge(
+                          label: 'SPICY', color: AppColors.warning, tiny: true),
+                    ],
+                    const Spacer(),
+                    Text(
+                      item.category.toUpperCase(),
+                      style: GoogleFonts.dmSans(
+                          fontSize: 8,
+                          color: AppColors.textDisabled,
+                          letterSpacing: 1,
+                          fontWeight: FontWeight.w600),
+                    ),
+                  ]),
+
+                  // Name
+                  Text(
+                    item.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.syne(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+
+                  // Description (if exists)
+                  if (item.description != null)
+                    Text(
+                      item.description!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.dmSans(
+                          fontSize: 10, color: AppColors.textMuted),
+                    ),
+
+                  // Bottom: price + button
+                  Row(
+                    children: [
+                      Text(
+                        'Rs. ${item.price.toStringAsFixed(0)}',
+                        style: GoogleFonts.syne(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.primary,
+                        ),
+                      ),
+                      const Spacer(),
+                      qty == 0
+                          ? _AddButton(
+                              onTap: () =>
+                                  ref.read(cartProvider.notifier).add(item),
+                              small: true,
+                            )
+                          : _QtyControl(
+                              qty: qty,
+                              onInc: () =>
+                                  ref.read(cartProvider.notifier).add(item),
+                              onDec: () => ref
+                                  .read(cartProvider.notifier)
+                                  .remove(item.id),
+                              small: true,
+                            ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Shared image widget (uses CachedNetworkImage) ─────────────────────────────
+class _ItemImage extends StatelessWidget {
+  const _ItemImage({required this.item});
+  final MenuItemModel item;
+
+  @override
+  Widget build(BuildContext context) {
+    if (item.imageUrl == null || item.imageUrl!.isEmpty) {
+      return _PlaceholderImage(item: item);
+    }
+    return CachedNetworkImage(
+      imageUrl: item.imageUrl!,
+      fit: BoxFit.cover,
+      placeholder: (_, __) => Container(
+        color: AppColors.surfaceAlt,
+        child: const Center(
+          child: SizedBox(
+            width: 20,
+            height: 20,
+            child: CircularProgressIndicator(
+                strokeWidth: 1.5, color: AppColors.border),
+          ),
+        ),
+      ),
+      errorWidget: (_, __, ___) => _PlaceholderImage(item: item),
     );
   }
 }
@@ -144,11 +303,11 @@ class _PlaceholderImage extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               const Icon(Icons.restaurant_rounded,
-                  color: AppColors.border, size: 32),
+                  color: AppColors.border, size: 28),
               const SizedBox(height: 4),
               Text(item.category,
                   style: GoogleFonts.dmSans(
-                      fontSize: 10, color: AppColors.textDisabled)),
+                      fontSize: 9, color: AppColors.textDisabled)),
             ],
           ),
         ),
@@ -156,21 +315,23 @@ class _PlaceholderImage extends StatelessWidget {
 }
 
 class _AddButton extends StatelessWidget {
-  const _AddButton({required this.onTap});
+  const _AddButton({required this.onTap, this.small = false});
   final VoidCallback onTap;
+  final bool small;
 
   @override
   Widget build(BuildContext context) => GestureDetector(
         onTap: onTap,
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+          padding: EdgeInsets.symmetric(
+              horizontal: small ? 10 : 14, vertical: small ? 5 : 7),
           decoration: BoxDecoration(
             gradient: AppColors.primaryGradient,
             borderRadius: BorderRadius.circular(8),
           ),
           child: Text('ADD',
               style: GoogleFonts.syne(
-                  fontSize: 11,
+                  fontSize: small ? 10 : 11,
                   fontWeight: FontWeight.w700,
                   color: Colors.white,
                   letterSpacing: 0.5)),
@@ -180,10 +341,14 @@ class _AddButton extends StatelessWidget {
 
 class _QtyControl extends StatelessWidget {
   const _QtyControl(
-      {required this.qty, required this.onInc, required this.onDec});
+      {required this.qty,
+      required this.onInc,
+      required this.onDec,
+      this.small = false});
   final int qty;
   final VoidCallback onInc;
   final VoidCallback onDec;
+  final bool small;
 
   @override
   Widget build(BuildContext context) => Container(
@@ -195,23 +360,25 @@ class _QtyControl extends StatelessWidget {
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           GestureDetector(
             onTap: onDec,
-            child: const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+            child: Padding(
+              padding: EdgeInsets.symmetric(
+                  horizontal: small ? 7 : 10, vertical: small ? 5 : 7),
               child: Icon(Icons.remove_rounded,
-                  color: AppColors.primary, size: 16),
+                  color: AppColors.primary, size: small ? 14 : 16),
             ),
           ),
           Text('$qty',
               style: GoogleFonts.syne(
-                  fontSize: 13,
+                  fontSize: small ? 12 : 13,
                   fontWeight: FontWeight.w800,
                   color: AppColors.primary)),
           GestureDetector(
             onTap: onInc,
-            child: const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-              child:
-                  Icon(Icons.add_rounded, color: AppColors.primary, size: 16),
+            child: Padding(
+              padding: EdgeInsets.symmetric(
+                  horizontal: small ? 7 : 10, vertical: small ? 5 : 7),
+              child: Icon(Icons.add_rounded,
+                  color: AppColors.primary, size: small ? 14 : 16),
             ),
           ),
         ]),
@@ -219,13 +386,16 @@ class _QtyControl extends StatelessWidget {
 }
 
 class _TagBadge extends StatelessWidget {
-  const _TagBadge({required this.label, required this.color});
+  const _TagBadge(
+      {required this.label, required this.color, this.tiny = false});
   final String label;
   final Color color;
+  final bool tiny;
 
   @override
   Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        padding: EdgeInsets.symmetric(
+            horizontal: tiny ? 4 : 6, vertical: tiny ? 1 : 2),
         decoration: BoxDecoration(
           color: color.withValues(alpha: 0.12),
           borderRadius: BorderRadius.circular(4),
@@ -233,7 +403,7 @@ class _TagBadge extends StatelessWidget {
         ),
         child: Text(label,
             style: GoogleFonts.dmSans(
-                fontSize: 9,
+                fontSize: tiny ? 8 : 9,
                 fontWeight: FontWeight.w700,
                 color: color,
                 letterSpacing: 0.5)),
