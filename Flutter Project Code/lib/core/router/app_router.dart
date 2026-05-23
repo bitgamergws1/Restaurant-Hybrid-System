@@ -50,7 +50,6 @@ final routerProvider = Provider<GoRouter>((ref) {
     redirect: (context, state) {
       final auth = ref.read(authNotifierProvider);
 
-      final isLoading = auth is AuthInitial || auth is AuthLoading;
       final isAuthed = auth is AuthAuthenticated;
 
       final loc = state.matchedLocation;
@@ -61,7 +60,13 @@ final routerProvider = Provider<GoRouter>((ref) {
           loc.startsWith('/otp') ||
           loc.startsWith('/forgot');
 
-      if (isLoading) return onSplash ? null : RoutePaths.splash;
+      // AuthInitial = true app startup check (show splash).
+      // AuthLoading = an async op is running on a screen — do NOT redirect;
+      //   the screen shows its own spinner. Redirecting here unmounts the
+      //   screen and kills ref.listen callbacks (OTP nav never fires).
+      if (auth is AuthInitial) return onSplash ? null : RoutePaths.splash;
+      if (auth is AuthLoading) return null; // stay wherever we are
+
       if (!isAuthed) return onAuth ? null : RoutePaths.login;
       if (isAuthed && (onSplash || onAuth)) {
         // Role-based landing: admin/staff → admin dashboard, customer → menu
