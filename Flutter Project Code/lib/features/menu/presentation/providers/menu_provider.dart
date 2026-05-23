@@ -19,7 +19,9 @@ final menuItemsProvider =
 
 // ── Categories ───────────────────────────────────────────────────────────────
 
-final categoriesProvider =
-    FutureProvider.autoDispose<List<String>>((ref) async {
+// Not autoDispose — categories must survive category-tap rebuilds.
+// autoDispose was causing the provider to reset whenever selectedCategory
+// changed (brief un-watch during rebuild), making chips flicker/disappear.
+final categoriesProvider = FutureProvider<List<String>>((ref) async {
   return ref.watch(menuRepositoryProvider).getCategories();
 });
