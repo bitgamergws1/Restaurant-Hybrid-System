@@ -2,7 +2,13 @@ from collections import defaultdict
 from flask import Blueprint, request
 from extensions import get_db
 from middleware.auth_middleware import require_admin
+from services.email_service import (
+    send_delay_notification_email,
+    send_complaint_resolution_email,
+    send_order_cancelled_email,
+)
 from utils.response import success_response, error_response
+from utils.validators import validate_uuid
 
 admin_bp = Blueprint("admin", __name__)
 
@@ -174,6 +180,127 @@ def get_admin_orders():
     )
 
 
+# ── NEW: Admin sends delay notification to customer ───────────────────────────
+@admin_bp.route("/orders/<order_id>/notify-delay", methods=["POST"], strict_slashes=False)
+@require_admin
+def notify_delay(order_id):
+    """
+    Admin manually notifies the customer about a delay.
+
+    Body:
+        message       (str, required)  — custom message explaining the delay
+        eta_minutes   (int, optional)  — updated estimate in minutes
+    """
+    if not validate_uuid(order_id):
+        return error_response("Invalid order ID format", 400)
+
+    data = request.get_json(silent=True)
+    if not data:
+        return error_response("Invalid JSON body", 400)
+
+    message = str(data.get("message", "")).strip()
+    if not message:
+        return error_response("'message' is required", 400)
+
+    eta_minutes = data.get("eta_minutes")
+    if eta_minutes is not None:
+        try:
+            eta_minutes = int(eta_minutes)
+            if eta_minutes < 1 or eta_minutes > 300:
+                raise ValueError
+        except (ValueError, TypeError):
+            return error_response("eta_minutes must be an integer between 1 and 300", 400)
+
+    db = get_db()
+    order_result = db.table("orders").select("*").eq("id", order_id).execute()
+    if not order_result.data:
+        return error_response("Order not found", 404)
+
+    order = order_result.data[0]
+
+    # Fetch customer info
+    user_result = db.table("users").select("email, name").eq("id", order["user_id"]).execute()
+    if not user_result.data:
+        return error_response("Customer account not found", 404)
+
+    user = user_result.data[0]
+
+    email_sent = send_delay_notification_email(
+        to_address=user["email"],
+        user_name=user["name"],
+        order=order,
+        message=message,
+        new_eta_minutes=eta_minutes
+    )
+
+    if not email_sent:
+        return error_response("Failed to send delay notification email.", 500)
+
+    return success_response(
+        {
+            "order_id": order_id,
+            "notified_email": user["email"],
+            "eta_minutes": eta_minutes
+        },
+        "Delay notification sent to customer successfully.",
+        200
+    )
+
+
+# ── NEW: Admin cancels order (with optional reason + email) ───────────────────
+@admin_bp.route("/orders/<order_id>/cancel", methods=["POST"], strict_slashes=False)
+@require_admin
+def admin_cancel_order(order_id):
+    """
+    Admin cancels any non-terminal order and optionally sends a reason email.
+
+    Body:
+        reason  (str, optional) — reason shown in the cancellation email
+    """
+    if not validate_uuid(order_id):
+        return error_response("Invalid order ID format", 400)
+
+    data = request.get_json(silent=True) or {}
+    reason = str(data.get("reason", "")).strip()
+
+    db = get_db()
+    order_result = db.table("orders").select("*").eq("id", order_id).execute()
+    if not order_result.data:
+        return error_response("Order not found", 404)
+
+    order = order_result.data[0]
+    terminal_states = {"delivered", "cancelled", "rejected"}
+
+    if order["status"] in terminal_states:
+        return error_response(
+            f"Order is already '{order['status']}' and cannot be cancelled.", 400
+        )
+
+    result = db.table("orders").update({"status": "cancelled"}).eq("id", order_id).execute()
+    cancelled_order = result.data[0]
+
+    # Notify customer
+    try:
+        user_result = db.table("users").select("email, name").eq("id", order["user_id"]).execute()
+        if user_result.data:
+            u = user_result.data[0]
+            send_order_cancelled_email(
+                to_address=u["email"],
+                user_name=u["name"],
+                order=cancelled_order,
+                cancelled_by="admin",
+                reason=reason
+            )
+    except Exception as e:
+        print(f"[admin] Cancel email failed for order {order_id}: {e}")
+
+    return success_response(
+        {"order": cancelled_order},
+        "Order cancelled and customer notified.",
+        200
+    )
+
+
 @admin_bp.route("/complaints", methods=["GET"], strict_slashes=False)
 @require_admin
 def get_complaints():
@@ -221,6 +348,75 @@ def update_complaint_status(complaint_id):
         return error_response("Complaint not found", 404)
 
     return success_response({"complaint": result.data[0]}, "Complaint status updated", 200)
+
+
+# ── NEW: Admin resolves complaint + sends resolution email ────────────────────
+@admin_bp.route("/complaints/<complaint_id>/resolve", methods=["POST"], strict_slashes=False)
+@require_admin
+def resolve_complaint(complaint_id):
+    """
+    Admin resolves a complaint and sends a resolution email to the customer.
+
+    Body:
+        resolution_message  (str, required)  — admin's resolution text
+        status              (str, optional)  — 'resolved' (default) or 'closed'
+    """
+    if not validate_uuid(complaint_id):
+        return error_response("Invalid complaint ID format", 400)
+
+    data = request.get_json(silent=True)
+    if not data:
+        return error_response("Invalid JSON body", 400)
+
+    resolution_message = str(data.get("resolution_message", "")).strip()
+    if not resolution_message:
+        return error_response("'resolution_message' is required", 400)
+
+    new_status = str(data.get("status", "resolved")).strip()
+    if new_status not in ("resolved", "closed"):
+        return error_response("status must be 'resolved' or 'closed'", 400)
+
+    db = get_db()
+    complaint_result = db.table("complaints").select("*").eq("id", complaint_id).execute()
+    if not complaint_result.data:
+        return error_response("Complaint not found", 404)
+
+    complaint = complaint_result.data[0]
+
+    if complaint["status"] in ("resolved", "closed"):
+        return error_response(
+            f"Complaint is already '{complaint['status']}'.", 400
+        )
+
+    # Update status
+    result = db.table("complaints").update({"status": new_status}).eq("id", complaint_id).execute()
+    updated_complaint = result.data[0]
+
+    # Send resolution email if complaint has a user_id
+    email_sent = False
+    if complaint.get("user_id"):
+        try:
+            user_result = db.table("users").select("email, name").eq("id", complaint["user_id"]).execute()
+            if user_result.data:
+                u = user_result.data[0]
+                email_sent = send_complaint_resolution_email(
+                    to_address=u["email"],
+                    user_name=u["name"],
+                    complaint=complaint,
+                    resolution_message=resolution_message
+                )
+        except Exception as e:
+            print(f"[admin] Resolution email failed for complaint {complaint_id}: {e}")
+
+    return success_response(
+        {
+            "complaint": updated_complaint,
+            "resolution_message": resolution_message,
+            "email_sent": email_sent
+        },
+        "Complaint resolved" + (" and customer notified via email." if email_sent else ". (No email — anonymous complaint)"),
+        200
+    )
 
 
 @admin_bp.route("/users", methods=["GET"], strict_slashes=False)
